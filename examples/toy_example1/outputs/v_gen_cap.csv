@@ -1,0 +1,5 @@
+generation_project,scenario,GenCapacity
+sd_gen,low,20.0
+berk_gen,low,0.0
+sd_gen,high,20.0
+berk_gen,high,0.0

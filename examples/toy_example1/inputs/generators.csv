@@ -1,0 +1,5 @@
+﻿gen_id,name,gen_tech,bus,c2,c1,c0,investment_cost,existing_capacity,capacity_limit,variable_om_cost,storage_efficiency,duration
+1,sd_gen,solar,lima,1,2,0,1,1,20,0.5,0,0
+2,berk_gen,wind,lima,2,3,4,2,0,20,0.5,0,0
+3,sf_gen,coal,lima,2,3,4,3,0,20,2,0,0
+4,sf_bat,storage,sd,2,3,4,4,0,0,0,0.75,4

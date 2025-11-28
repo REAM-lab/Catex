@@ -1,0 +1,2 @@
+﻿line_id,name,from_bus,to_bus,rate,r,x,g,b
+1,bart,1,2,100,0.01,0.05,0.1,0.05

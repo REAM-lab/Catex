@@ -1,0 +1,7 @@
+﻿bus_id,sc_id,t_id,load
+sd,low,1,4
+sd,low,2,5
+sd,low,3,6
+lima,high,1,2
+lima,high,3,4
+lima,high,2,1

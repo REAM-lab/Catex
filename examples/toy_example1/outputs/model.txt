@@ -1,0 +1,50 @@
+Min 2 GEN[sf_gen,1] + 2 GEN[sf_gen,2] + 2 GEN[sf_gen,3] + 0.15 GENV[sd_gen,low,1] + 0.15 GENV[sd_gen,low,2] + 0.15 GENV[sd_gen,low,3] + 0.1 GENV[sd_gen,high,1] + 0.1 GENV[sd_gen,high,2] + 0.1 GENV[sd_gen,high,3] + 0.15 GENV[berk_gen,low,1] + 0.15 GENV[berk_gen,low,2] + 0.15 GENV[berk_gen,low,3] + 0.1 GENV[berk_gen,high,1] + 0.1 GENV[berk_gen,high,2] + 0.1 GENV[berk_gen,high,3] + 3 CAP[sf_gen] + 0.3 CAPV[sd_gen,low] + 0.2 CAPV[sd_gen,high] + 0.6 CAPV[berk_gen,low] + 0.4 CAPV[berk_gen,high]
+Subject to
+ cFixCapGenNonVar[sf_gen] : CAP[sf_gen] ≥ 2
+ cGenBalance[lima,low,1] : GEN[sf_gen,1] + GENV[sd_gen,low,1] + GENV[berk_gen,low,1] ≥ 4
+ cGenBalance[lima,high,1] : GEN[sf_gen,1] + GENV[sd_gen,high,1] + GENV[berk_gen,high,1] ≥ 2
+ cGenBalance[lima,low,2] : GEN[sf_gen,2] + GENV[sd_gen,low,2] + GENV[berk_gen,low,2] ≥ 5
+ cGenBalance[lima,high,2] : GEN[sf_gen,2] + GENV[sd_gen,high,2] + GENV[berk_gen,high,2] ≥ 1
+ cGenBalance[lima,low,3] : GEN[sf_gen,3] + GENV[sd_gen,low,3] + GENV[berk_gen,low,3] ≥ 6
+ cGenBalance[lima,high,3] : GEN[sf_gen,3] + GENV[sd_gen,high,3] + GENV[berk_gen,high,3] ≥ 4
+ cMaxCapNonVar[sf_gen] : CAP[sf_gen] ≤ 20
+ cMaxCapVar[sd_gen,low] : CAPV[sd_gen,low] ≤ 20
+ cMaxCapVar[berk_gen,low] : CAPV[berk_gen,low] ≤ 20
+ cMaxCapVar[sd_gen,high] : CAPV[sd_gen,high] ≤ 20
+ cMaxCapVar[berk_gen,high] : CAPV[berk_gen,high] ≤ 20
+ cMaxGenNonVar[sf_gen,1] : GEN[sf_gen,1] - CAP[sf_gen] ≤ 0
+ cMaxGenNonVar[sf_gen,2] : GEN[sf_gen,2] - CAP[sf_gen] ≤ 0
+ cMaxGenNonVar[sf_gen,3] : GEN[sf_gen,3] - CAP[sf_gen] ≤ 0
+ cMaxGenVar[sd_gen,low,1] : GENV[sd_gen,low,1] - 0.1 CAPV[sd_gen,low] ≤ 0
+ cMaxGenVar[berk_gen,low,1] : GENV[berk_gen,low,1] - 0.1 CAPV[berk_gen,low] ≤ 0
+ cMaxGenVar[sd_gen,high,1] : GENV[sd_gen,high,1] - 0.5 CAPV[sd_gen,high] ≤ 0
+ cMaxGenVar[berk_gen,high,1] : GENV[berk_gen,high,1] - 0.5 CAPV[berk_gen,high] ≤ 0
+ cMaxGenVar[sd_gen,low,2] : GENV[sd_gen,low,2] - 0.2 CAPV[sd_gen,low] ≤ 0
+ cMaxGenVar[berk_gen,low,2] : GENV[berk_gen,low,2] - 0.2 CAPV[berk_gen,low] ≤ 0
+ cMaxGenVar[sd_gen,high,2] : GENV[sd_gen,high,2] - CAPV[sd_gen,high] ≤ 0
+ cMaxGenVar[berk_gen,high,2] : GENV[berk_gen,high,2] - CAPV[berk_gen,high] ≤ 0
+ cMaxGenVar[sd_gen,low,3] : GENV[sd_gen,low,3] - 3 CAPV[sd_gen,low] ≤ 0
+ cMaxGenVar[berk_gen,low,3] : GENV[berk_gen,low,3] - 3 CAPV[berk_gen,low] ≤ 0
+ cMaxGenVar[sd_gen,high,3] : GENV[sd_gen,high,3] - 0.2 CAPV[sd_gen,high] ≤ 0
+ cMaxGenVar[berk_gen,high,3] : GENV[berk_gen,high,3] - 0.2 CAPV[berk_gen,high] ≤ 0
+ GEN[sf_gen,1] ≥ 0
+ GEN[sf_gen,2] ≥ 0
+ GEN[sf_gen,3] ≥ 0
+ CAP[sf_gen] ≥ 0
+ GENV[sd_gen,low,1] ≥ 0
+ GENV[berk_gen,low,1] ≥ 0
+ GENV[sd_gen,high,1] ≥ 0
+ GENV[berk_gen,high,1] ≥ 0
+ GENV[sd_gen,low,2] ≥ 0
+ GENV[berk_gen,low,2] ≥ 0
+ GENV[sd_gen,high,2] ≥ 0
+ GENV[berk_gen,high,2] ≥ 0
+ GENV[sd_gen,low,3] ≥ 0
+ GENV[berk_gen,low,3] ≥ 0
+ GENV[sd_gen,high,3] ≥ 0
+ GENV[berk_gen,high,3] ≥ 0
+ CAPV[sd_gen,low] ≥ 0
+ CAPV[berk_gen,low] ≥ 0
+ CAPV[sd_gen,high] ≥ 0
+ CAPV[berk_gen,high] ≥ 0
+

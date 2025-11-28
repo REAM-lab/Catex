@@ -1,0 +1,4 @@
+component,timeseries,cost
+variable_costs,hourly_series,8.2
+fixed_costs,all,16.0
+total_costs,all,24.2
