@@ -1,0 +1,2 @@
+﻿sto_id,sto_tech,bus_id,invest_cost,exist_power_cap,exist_energy_cap,duration
+batts,storage,sd,5,10,50,0

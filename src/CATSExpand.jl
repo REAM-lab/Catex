@@ -162,19 +162,20 @@ function stochastic_capex( ; main_dir = pwd(),
 
     print(" > Generation constraints ...")
     
-    # Minimum capacity of pre-existing generators
-    @constraint(m, cFixCapGenVar[g ∈ PREGV, s ∈ S], 
-                    CAPV[g, s] ≥ precap[g])
+    # Minimum capacity of generators
+    @constraint(m, cFixCapGenVar[g ∈ GV, s ∈ S], 
+                    CAPV[g, s] ≥ gens[g].exist_cap)
 
-    @constraint(m, cFixCapGenNonVar[g ∈ PREGN], 
-                    CAP[g] ≥ precap[g])
+    @constraint(m, cFixCapGenNonVar[g ∈ GN], 
+                    CAP[g] ≥ gens[g].exist_cap)
 
     # Maximum build capacity 
     @constraint(m, cMaxCapNonVar[g ∈ GN], 
-                    CAP[g] ≤ gen_capacity_limit[g])
+                    CAP[g] ≤ gens[g].cap_limit)
+
     #Main.@infiltrate
     @constraint(m, cMaxCapVar[g ∈ GV, s ∈ S], 
-                    CAPV[g, s] ≤ gen_capacity_limit[g])
+                    CAPV[g, s] ≤ gens[g].cap_limit)
     
     # Maximum power generation
     @constraint(m, cMaxGenNonVar[g ∈ GN, t ∈ TPS], 
