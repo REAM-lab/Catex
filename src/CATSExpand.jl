@@ -21,52 +21,59 @@ function stochastic_capex( ; main_dir = pwd(),
 
     inputs_dir = joinpath(main_dir, "inputs")
 
-    # Scenarios
+    """
+    Scenario represents a scenario in the stochastic capacity expansion problem.
+    
+    # Fields:
+    - sc_id: ID of the scenario
+    - prob: probability of the scenario
+    """
     struct Scenario
-        sc_id:: Int64
-        name:: String
+        sc_id:: String
         prob:: Float64
     end
 
-    #scen_data = CSV.read(joinpath(inputs_dir, "scenarios.csv"),DataFrame, types=[String, Float64]);
+    # Get a list of Scenario structures
+    scen = to_Structs(Scenario, inputs_dir, "scenarios.csv")
 
-    #S = scen_data[:, :scenario]
-    #num_scen = length(S)
-    #prob = to_Dict(scen_data, :scenario, :probability)   
+    # Get a list of the scenario IDs
+    S = getfield.(scen, :sc_id)
 
-    S = to_Structs(Scenario, inputs_dir, "scenarios.csv")
+    # Create NamedArray to access scenarios by their IDs
+    scen = NamedArray(scen, (S))
+    
 
-    # Timepoints
+    """
+    Timepoint represents a timepoint in the optimization horizon for the 
+    stochastic capacity expansion problem.
+
+    # Fields:
+    - tp_id: ID of the timepoint
+    - timestamp: timestamp of the timepoint
+    - duration: duration of the timepoint in hours
+    """
     struct Timepoint
-        t_id:: Int64
+        tp_id:: Int64
         timestamp:: Float64
         duration:: Float64
     end 
 
-    T = to_Structs(Timepoint, inputs_dir, "timepoints.csv")
+    # Get a list of Scenario structures
+    tps = to_Structs(Timepoint, inputs_dir, "timepoints.csv")
+
+    # Get a list of the timepoint IDs
+    TPS = getfield.(tps, :tp_id)
+
+    # Create NamedArray to access scenarios by their IDs
+    tps = NamedArray(tps, (TPS))
 
 
-    #tps_data =  CSV.read(joinpath(inputs_dir, "timepoints.csv"), DataFrame, 
-    #                        types=[Int64, Int64, String]);
-
-    #ts_data = CSV.read(joinpath(inputs_dir, "timeseries.csv"), DataFrame, 
-    #                        types=[String, Float64]);
-
-    #TPS = tps_data[:, :timepoint]
-    #TS = ts_data[:, :timeseries]
-
-    #tps_ts_data = leftjoin(tps_data, ts_data, on = :timeseries)
-    #tp_duration_hrs =  to_Dict(tps_ts_data, :timepoint, :tp_duration_hrs)   
-
-    #TPS_IN_TS = to_stacked_Dict(tps_ts_data, "timeseries", "timepoint")
-
-    # Buses and loads
-    #buses_data =  CSV.read(joinpath(inputs_dir, "buses.csv"),DataFrame, 
-    #                        types=[String, Bool]);
-    # Buses 
+    """
+    Bus
+    A structure representing a bus in the power system.
+    """
     struct Bus
-        bus_id:: Int64
-        name:: String
+        bus_id:: String
         kv:: Float64
         type:: String
         lat:: Float64

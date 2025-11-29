@@ -42,12 +42,14 @@ println("\nNamedArray lookup\n", @benchmark begin
 end)
 
 d4 = Dict{Tuple{String,String, String}, Float64}()
+d1 = Dict((i,j) => rand() for i in I, j in J)
+d2 = Dict((i,j) => rand() for i in I, j in J)
 for i in I, j in J, k in K
     d4[i,j,k] = d1[i,j]*d2[i,j]*2
 end
 
 println("\nDict lookup\n", @benchmark begin
-    for i in I, j in J
-        d4[i,j]
+    for i in I, j in J, k in K
+        d4[i,j,k]
     end
 end)

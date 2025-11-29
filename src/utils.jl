@@ -4,11 +4,20 @@ using DataFrames, JuMP, CSV
 
 export to_stacked_Dict, to_Dict, to_tupled_Dict, to_Df, build_admittance_matrix, to_Structs
 
-function to_Structs(structure::Any, inputs_dir:: String, filename:: String)::Vector{structure} 
+function to_Structs(structure::DataType, inputs_dir:: String, filename:: String):: Vector{structure}
     file_dir = joinpath(inputs_dir, filename)
-    df = CSV.read(file_dir, DataFrame)
+    struct_names = fieldnames(structure)
+    struct_types = fieldtypes(structure)
+
+    first_csvlines = CSV.File(joinpath(inputs_dir, filename); limit=1)
+    csv_header = Tuple(propertynames(first_csvlines))
+
+    @assert csv_header == struct_names """Column names of $filename does not match the fields of the structure $structure."""
+
+    df = CSV.read(file_dir, DataFrame; types=Dict(zip(struct_names, struct_types)))
     cols = Tuple(df[!, col] for col in names(df))
     V = structure.(cols...)    
+    
     return V
 end
 
