@@ -124,8 +124,7 @@ This function builds the admittance matrix of any power system.
 TODO: add hint type to the lines argument. We may need to import the Line Struct.
 
 """
-function build_admittance_matrix(N:: Vector{String}, lines; include_shunts=false) 
-                                :: NamedArray{ComplexF64}
+function build_admittance_matrix(N:: Vector{String}, lines; include_shunts=false) :: NamedArray{ComplexF64}
 
     # Define admittance matrix (actually it is NamedArray)
     # Note: we opt to use a NamedArray so N does not have to be a vector of numbers

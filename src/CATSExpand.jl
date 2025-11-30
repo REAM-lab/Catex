@@ -4,44 +4,52 @@ module CATSExpand
 using CSV, DataFrames, DataStructures, Tables, JuMP, MosekTools, NamedArrays
 
 include("utils.jl")
+include("scenarios.jl")
 
 using .utils
 
 # Export the functions you want users to be able to access easily
-export stochastic_capex
+export initialize
+
+struct system
+    scens:: NamedArray
+    #buses:: NamedArray
+    #gens:: NamedArray
+    #lines:: NamedArray
+    #tps:: NamedArray
+    #loads:: NamedArray
+    #cf:: NamedArray
+end
+
+function initialize(;main_dir = pwd())
+
+    inputs_dir = joinpath(main_dir, "inputs")
+    
+    scens = load_scenarios(inputs_dir)
+    #buses = load_buses(inputs_dir)
+    #gens = load_generators(inputs_dir)
+    #lines = load_lines(inputs_dir)
+    #tps = load_timepoints(inputs_dir)
+    #loads = load_loads(inputs_dir)
+    #cf = load_capacity_factors(inputs_dir)
+
+    #sys = system(scens, buses, gens, lines, tps, loads, cf)
+
+    return sys
+end
+
 
 
 """
 Solves a stochastic capacity expansion problem.
-"""  
+""" 
+#=
 function stochastic_capex( ; main_dir = pwd(), 
                              solver = Mosek.Optimizer,
                              print_model = false)
     
 
     inputs_dir = joinpath(main_dir, "inputs")
-
-    """
-    Scenario represents a scenario in the stochastic capacity expansion problem.
-    
-    # Fields:
-    - sc_id: ID of the scenario
-    - prob: probability of the scenario
-    """
-    struct Scenario
-        sc_id:: String
-        prob:: Float64
-    end
-
-    # Get a list of Scenario structures
-    scen = to_Structs(Scenario, inputs_dir, "scenarios.csv")
-
-    # Get a list of the scenario IDs
-    S = getfield.(scen, :sc_id)
-
-    # Transform scen into NamedArray, so we can access scenarios by their IDs
-    scen = NamedArray(scen, (S))
-    
 
     """
     Timepoint represents a timepoint in the optimization horizon for the 
@@ -210,9 +218,6 @@ function stochastic_capex( ; main_dir = pwd(),
     GN_AT_BUS = intersect.(G_AT_BUS, fill(GN, length(N)))
 
     
-
-    
-
     """
     Line is a π-model transmission line connecting two buses in the power system.
     # Fields:
@@ -412,6 +417,8 @@ function stochastic_capex( ; main_dir = pwd(),
     #CSV.write(joinpath(outputs_dir, "generation.csv"), df)
 
     print("Completed")
+    
 end 
+=#
 
 end # module CATSExpand
