@@ -12,7 +12,6 @@ using ..utils
 # Export variables and functions
 export Scenario, load_data
 
-
 """
 Scenario represents a scenario in the stochastic capacity expansion problem.
 # Fields:

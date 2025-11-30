@@ -194,10 +194,5 @@ function get_maxFlow(N:: Vector{String}, lines):: NamedArray{Float64}
     return maxFlow
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::System)
-    println(io, "System:")
-    println(io, " Scenarios (scens) = ", names(s.scens, 1))
-    #print(io, " y = ", p.y)
-end
 
 end # ends utils module
