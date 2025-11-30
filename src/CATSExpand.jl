@@ -4,15 +4,16 @@ module CATSExpand
 using CSV, DataFrames, DataStructures, Tables, JuMP, MosekTools, NamedArrays
 
 include("utils.jl")
-include("scenarios.jl")
+include("Scenarios.jl")
+include("Buses.jl")
 
-using .utils
+using .utils, .Scenarios, .Buses
 
 # Export the functions you want users to be able to access easily
-export initialize
+export initialize, System, Scenario, Bus
 
-struct system
-    scens:: NamedArray
+struct System
+    sc:: NamedArray
     #buses:: NamedArray
     #gens:: NamedArray
     #lines:: NamedArray
@@ -21,12 +22,21 @@ struct system
     #cf:: NamedArray
 end
 
+"""
+This function defines how to display the System struct in the REPL or when printed.
+"""
+function Base.show(io::IO, ::MIME"text/plain", s::System)
+    println(io, "System:")
+    println(io, " Scenarios (scens) = ", names(s.scens, 1))
+    #print(io, " y = ", p.y)
+end
+
 function initialize(;main_dir = pwd())
 
     inputs_dir = joinpath(main_dir, "inputs")
     
-    scens = load_scenarios(inputs_dir)
-    #buses = load_buses(inputs_dir)
+    sc = Scenarios.load_data(inputs_dir)
+    bus = Buses.load_data(inputs_dir)
     #gens = load_generators(inputs_dir)
     #lines = load_lines(inputs_dir)
     #tps = load_timepoints(inputs_dir)
@@ -34,6 +44,7 @@ function initialize(;main_dir = pwd())
     #cf = load_capacity_factors(inputs_dir)
 
     #sys = system(scens, buses, gens, lines, tps, loads, cf)
+    sys = System(scens)
 
     return sys
 end

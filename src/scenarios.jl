@@ -1,20 +1,33 @@
+"""
+Scenarios module for managing scenario data in the stochastic capacity expansion problem.
+"""
 module Scenarios   
 
-    using NamedArrays
+# Use Julia standard libraries and third-party packages
+using NamedArrays
 
-    """
-    Scenario represents a scenario in the stochastic capacity expansion problem.
-    
-    # Fields:
-    - sc_id: ID of the scenario
-    - prob: probability of the scenario
-    """
-    struct Scenario
-        sc_id:: String
-        prob:: Float64
-    end
+# Use internal modules
+using ..utils
 
-    function load_scenarios(inputs_dir:: String)
+# Export variables and functions
+export Scenario, load_data
+
+
+"""
+Scenario represents a scenario in the stochastic capacity expansion problem.
+# Fields:
+- sc_id: ID of the scenario
+- prob: probability of the scenario
+"""
+struct Scenario
+    sc_id:: String
+    prob:: Float64
+end
+
+"""
+Load scenario data from a CSV file and return it as a NamedArray of Scenario structures.
+"""
+function load_data(inputs_dir:: String)
 
     # Get a list of Scenario structures
     scen = to_Structs(Scenario, inputs_dir, "scenarios.csv")
@@ -27,6 +40,6 @@ module Scenarios
 
     return scen
 
-    end
+end
 
 end # module Scenarios
