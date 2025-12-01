@@ -1,4 +1,4 @@
-gen_id,timepoint,DispatchGen_MW
-"Generator(""dirt"", ""coal"", ""sd"", 2.0, 3.0, 4.0, 3.0, 0.0, 20.0, 2.0)","Timepoint(""1"", 2025011500, 1.0)",0.0
-"Generator(""dirt"", ""coal"", ""sd"", 2.0, 3.0, 4.0, 3.0, 0.0, 20.0, 2.0)","Timepoint(""2"", 2025011501, 1.0)",0.0
-"Generator(""dirt"", ""coal"", ""sd"", 2.0, 3.0, 4.0, 3.0, 0.0, 20.0, 2.0)","Timepoint(""3"", 2025011502, 1.0)",0.0
+gen_id,tp_id,DispatchGen_MW
+dirt,1,0.0
+dirt,2,0.0
+dirt,3,0.0

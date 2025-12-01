@@ -1,9 +1,9 @@
 # :zap:STING:zap:
 
-Welcome! This repository contains the STING—**S**pecialized **T**ool for **IN**verter-based **G**rids.
+Welcome! This repository contains the CATEX—**CA**lifornia **T**ransmission System **EX**pansion. A Julia package for modeling capacity expansion and operations optimization. Originally developed for the state of California,
+it can be adapted for other regions.
 
 ## Installation 
-
 
 1. **Download STING**: Make sure you have [python3.12](https://www.python.org/downloads/) (or greater) installed on your computer. Start by cloning this repository and navigating into the STING directory.
     ```

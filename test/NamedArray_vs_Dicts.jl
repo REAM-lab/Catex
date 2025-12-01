@@ -1,3 +1,7 @@
+# This script benchmarks the performance of using Dicts versus NamedArrays
+# These benchmarks serve to inspire the use of NamedArrays instead of commonly used Dicts
+# The scripts was modified from: https://discourse.julialang.org/t/performance-of-namedarrays-vs-dictionaries-of-tuples/1854
+
 using NamedArrays, BenchmarkTools, Random
 
 I = [randstring(4) for i=1:100]

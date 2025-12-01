@@ -4,7 +4,7 @@ Generators module defines structure and functions for handling generator data in
 module Generators
 
 # Use Julia standard libraries and third-party packages
-using NamedArrays, JuMP
+using NamedArrays, JuMP, DataFrames, CSV
 
 # Use internal modules
 using ..Utils
@@ -146,7 +146,7 @@ function stochastic_capex_model!(mod:: Model, sys, pol)
 
     
     # The weighted operational costs of running each generator
-    @expression(mod, eVariableCosts[t ∈ T],
+    @expression(mod, eVariableCosts,
                     sum(t.duration * g.var_om_cost * GEN[g, t] for g ∈ GN, t ∈ T) 
                     + 1/length(S)*(sum(s.prob * t.duration * g.var_om_cost * vGEN[g, s, t] for g ∈ GV, s ∈ S, t ∈ T) ))
 
@@ -157,15 +157,31 @@ function stochastic_capex_model!(mod:: Model, sys, pol)
 
     # Total costs
     @expression(mod, eTotalCosts,
-                    sum(eVariableCosts[t] for t ∈ T) + eFixedCosts)
+                    eVariableCosts + eFixedCosts)
 end
 
 
 function toCSV_stochastic_capex(mod:: Model, outputs_dir:: String)
-    to_Df(mod[:GEN], [:gen_id, :timepoint, :DispatchGen_MW], outputs_dir , "dispatch.csv")
-    #to_Df(mod[:CAP], [:generation_project, :GenCapacity], outputs_dir , "gen_cap.csv")
-    #to_Df(mod[:vGEN], [:generation_project, :scenario, :timepoint, :DispatchGen_MW], outputs_dir , "v_dispatch.csv")
-    #to_Df(mod[:vCAP], [:generation_project, :scenario, :GenCapacity], outputs_dir , "v_gen_cap.csv")
+    
+    # Print GEN variable solution
+    to_Df(mod[:GEN], [:gen_id, :tp_id, :DispatchGen_MW], outputs_dir , "dispatch.csv")
+
+    # Print CAP variable solution
+    to_Df(mod[:CAP], [:gen_id, :GenCapacity], outputs_dir , "gen_cap.csv")
+
+    # Print vGEN variable solution
+    to_Df(mod[:vGEN], [:gen_id, :sc_id, :tp_id, :DispatchGen_MW], outputs_dir , "v_dispatch.csv")
+
+    # Print vCAP variable solution
+    to_Df(mod[:vCAP], [:gen_id, :sc_id, :GenCapacity], outputs_dir , "v_gen_cap.csv")
+
+    # Print cost expressions
+    filename = "costs_itemized.csv"
+    costs =  DataFrame(component  = ["variable_costs", "fixed_costs", "total_costs"], 
+                            cost  = [value(mod[:eVariableCosts]), value(mod[:eFixedCosts]), value(mod[:eTotalCosts])]) 
+    CSV.write(joinpath(outputs_dir, filename), costs)
+    println(" > $filename printed.")
+
 end
 
 end # module Generators

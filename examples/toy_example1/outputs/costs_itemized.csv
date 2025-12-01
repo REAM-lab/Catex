@@ -1,4 +1,4 @@
-component,timeseries,cost
-variable_costs,hourly_series,8.2
-fixed_costs,all,16.0
-total_costs,all,24.2
+component,cost
+variable_costs,4.9
+fixed_costs,12.662162162162158
+total_costs,17.562162162162156
