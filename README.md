@@ -1,14 +1,14 @@
-# :zap:STING:zap:
+# :zap:CATEX:zap:
 
 Welcome! This repository contains the CATEX—**CA**lifornia **T**ransmission System **EX**pansion. A Julia package for modeling capacity expansion and operations optimization. Originally developed for the state of California,
 it can be adapted for other regions.
 
 ## Installation 
 
-1. **Download STING**: Make sure you have [python3.12](https://www.python.org/downloads/) (or greater) installed on your computer. Start by cloning this repository and navigating into the STING directory.
+1. **Download CATEX.jl**: Make sure you have [julia 1.12.2](https://julialang.org) (or greater) installed on your computer. Start by cloning this repository and navigating into the CATEX directory.
     ```
-    $ git clone https://github.com/REAM-lab/STING
-    $ cd STING
+    $ git clone https://github.com/REAM-lab/CATEX
+    $ cd CATEX
     ```
     Next, create a virtual environment and download all required packages.
     ```
@@ -17,20 +17,3 @@ it can be adapted for other regions.
     (.venv)$ pip install -e .  
     ```
 
-2. **Install GAMSPy**: First register for a [GAMS account](https://www.gams.com/academics/) using academic email if you do not already have one. Then download a GAMSPy Local License from their website. A license is a either a 36 character access code or an ASCII file of six lines. In order to install your license, all you need to do is to run:
-    ```
-    (.venv)$ gamspy install license <access code or path_to_ascii_file>
-    ```
-    You can run:
-    ```
-    (.venv)$ gamspy show license
-    ```
-    to verify the installation of the license.
-
-3. **Run STING**: To ensure that STING was installed correctly navigate to the examples folder. Then, within your python virtual environment, launch python3.14 and execute `run_ssm()`.
-    ```
-    (.venv)$ cd ./examples/testcase1/
-    (.venv)$ python3.12
-    >>> from sting.main import run_ssm
-    >>> run_ssm()
-    ```

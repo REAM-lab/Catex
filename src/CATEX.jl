@@ -1,5 +1,5 @@
 """
-CATEX.jl - California Transmission Expansion and Operations
+CATEX.jl - California Transmission System Expansion Model
 A Julia package for modeling capacity expansion and operational 
 optimization. Originally developed for the state of California,
 it can be adapted for other regions.
@@ -68,7 +68,7 @@ Initialize the System struct by loading data from CSV files in the inputs direct
 function init_system(;main_dir = pwd())
 
     println("-------------------------") 
-    println("⚡ CATEX ⚡ - version 0.1.0") 
+    println(" CATEX  - version 0.1.0") 
     println("-------------------------") 
 
     print("> Initializing system data...")

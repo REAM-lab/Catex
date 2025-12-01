@@ -1,4 +1,4 @@
-The implementation of the STING model is licensed under Apache License v2.0 which can be obtained at http://www.apache.org/licenses/LICENSE-2.0
+The implementation of the CATEX model is licensed under Apache License v2.0 which can be obtained at http://www.apache.org/licenses/LICENSE-2.0
 
 
                                  Apache License
