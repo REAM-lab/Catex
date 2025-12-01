@@ -5,6 +5,7 @@ using NamedArrays
 
 # Use internal modules
 using ..Utils
+using ..Buses: Bus
 
 # Export variables and functions
 export Line, load_data, build_admittance_matrix, get_maxFlow
@@ -79,7 +80,7 @@ This function builds the admittance matrix of any power system.
 TODO: add hint type to the lines argument. We may need to import the Line Struct.
 
 """
-function build_admittance_matrix(N, lines; include_shunts=false) :: NamedArray{ComplexF64}
+function build_admittance_matrix(N:: NamedArray{Bus}, lines; include_shunts=false) :: NamedArray{ComplexF64}
 
     # Define admittance matrix (actually it is NamedArray)
     # Note: we opt to use a NamedArray so N does not have to be a vector of numbers

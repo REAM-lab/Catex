@@ -1,5 +1,5 @@
 using Infiltrator, Revise
-using CATSExpand 
+using CATSExpand, ProgressMeter
 
 main_dir ="/Users/paul/Documents/CATSExpand/examples/toy_example1"
 sys = init_system(main_dir= main_dir)

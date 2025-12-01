@@ -32,4 +32,10 @@ function load_data(inputs_dir:: String):: Policy
     return Policy(max_diffangle)
     # return Policy(budget, bus_angle_diff, max_CO2_emissions)
 end
+
+function stochastic_capex_model!(sys, mod:: Model)
+
+    # Maximum power transfered by bus
+    @constraint(mod, cAngleLimit[n ∈ setdiff(N, [slack_bus]), s ∈ S, t ∈ T],
+                    -θlim ≤ THETA[n, s, t] ≤ θlim)
 end # module Policies

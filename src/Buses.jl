@@ -4,13 +4,13 @@ Buses Module for handling bus data in a power system.
 module Buses
 
 # Use Julia standard libraries and third-party packages
-using NamedArrays
+using NamedArrays, JuMP
 
 # Use internal modules
 using ..Utils
 
 # Export variables and functions
-export Bus, load_data
+export Bus, load_data, stoch_model!
 
 """
 Bus represents a bus or node in the power system.
@@ -71,7 +71,22 @@ function load_data(inputs_dir:: String):: Tuple{NamedArray{Bus}, NamedArray{Unio
 end
 
 
+function stochastic_capex_model!(sys, mod:: Model)
 
+    N = sys.N
+    S = sys.S
+    T = sys.T
+
+    # Get slack bus
+    slack_bus = N[ findfirst([n.slack == true for n in N]) ]
+
+    # Define bus angle variables
+    @variable(mod, THETA[N, S, T]) 
+
+    # Fix bus angle of slack bus
+    fix.(THETA[slack_bus, S, T], 0)
+    
+end
    
 
 

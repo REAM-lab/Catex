@@ -1,7 +1,7 @@
 module CATSExpand
 
 # Import Julia packages
-using CSV, DataFrames, DataStructures, Tables, JuMP, MosekTools, NamedArrays, ProgressMeter
+using CSV, DataFrames, DataStructures, Tables, JuMP, MosekTools, NamedArrays
 
 # Define internal modules
 include("Utils.jl")
@@ -12,45 +12,15 @@ include("Lines.jl")
 include("EnergyStorages.jl")
 include("Timepoints.jl")
 include("Policies.jl")
+include("Systems.jl")
+
 
 # Use internal modules
-using .Utils, .Scenarios, .Buses, .Generators, .Lines, .EnergyStorages, .Timepoints, .Policies
+using .Utils, .Scenarios, .Buses, .Generators, .Lines, .EnergyStorages, .Timepoints, .Policies, .Systems
 
 # Export the functions we want users to be able to access easily
 export init_system, init_policies, stoch_capex
 export System, Scenario, Bus, Load, Generator, CapacityFactor, Line, EnergyStorage, Timepoint, Policy
-
-"""
-System represents the entire power system for the stochastic capacity expansion problem.
-# Fields:
-- sc: NamedArray of instances of Scenario structure
-- buses: NamedArray of instances of Bus structure
-- loads: multidimensional NamedArray of load data
-- gen: NamedArray of instances of Generator structure
-- cf: multidimensional NamedArray of capacity factors data
-- line: NamedArray of instances of Line structure
-- es: NamedArray of instances of EnergyStorage structure
-- tp: NamedArray of instances of Timepoint structure
-"""
-struct System
-    sc:: NamedArray{Scenario}
-    bus:: NamedArray{Bus}
-    load:: NamedArray{Union{Missing, Float64}}
-    gen:: NamedArray{Generator}
-    cf:: NamedArray{Union{Missing, Float64}}
-    line:: NamedArray{Line}
-    es:: NamedArray{EnergyStorage}
-    tp:: NamedArray{Timepoint}
-end
-
-"""
-This function defines how to display the System struct in the REPL or when printed in Julia console.
-"""
-function Base.show(io::IO, ::MIME"text/plain", s::System)
-    println(io, "System:")
-    println(io, " Scenarios (sc) = ", names(s.sc, 1))
-    #print(io, " y = ", p.y)
-end
 
 
 """
@@ -62,15 +32,15 @@ function init_system(;main_dir = pwd())
     inputs_dir = joinpath(main_dir, "inputs")
     
     # Fill in the fields of the System struct with CSV data
-    sc = Scenarios.load_data(inputs_dir)
-    bus, load = Buses.load_data(inputs_dir)
-    gen, cf = Generators.load_data(inputs_dir)
-    line = Lines.load_data(inputs_dir)
-    es = EnergyStorages.load_data(inputs_dir)
-    tp = Timepoints.load_data(inputs_dir)
+    scs = Scenarios.load_data(inputs_dir)
+    buses, load = Buses.load_data(inputs_dir)
+    gens, cf = Generators.load_data(inputs_dir)
+    lines = Lines.load_data(inputs_dir)
+    ess = EnergyStorages.load_data(inputs_dir)
+    tps = Timepoints.load_data(inputs_dir)
 
     # Create instance of System struct
-    sys = System(sc, bus, load, gen, cf, line, es, tp)
+    sys = System(scs, buses, loads, gens, cf, lines, ess, tps)
 
     return sys
 end
@@ -124,26 +94,7 @@ function stoch_capex(sys, pol    ;main_dir = pwd(),
     # Get timepoints
     T = sys.tp
 
-   """
-    - GV is a list of generator IDs that has capacity factor profile.
-    - gensv is a list of instances of generators with capacity factor profiles.
-        Power generation and capacity of these generators are considered random variables 
-        in the second-stage of the stochastic problem.
-    """
-    GV = G[ names(cf, 1) ]
 
-    """
-    - GN is a list generator IDs that does not have capacity factor profile.
-    - gensn is a list of instances of generators without capacity factor profiles.
-      The power generation and capacity are considered as part of 
-      first-stage of the stochastic problem.
-    """
-    GN = G[ setdiff( getfield.(G.array, :gen_id) , getfield.(GV.array, :gen_id) )]
-
-    G_AT_BUS = NamedArray( [filter(g -> g.bus_id == n, G.array) for n in names(N,1)], names(N, 1), :bus_id )
-    GV_AT_BUS = intersect.(G_AT_BUS, fill(GV, length(N)))  
-    GN_AT_BUS = intersect.(G_AT_BUS, fill(GN, length(N)))    
-    
     # Add policies
     θlim = pol.max_diffangle
 
@@ -154,45 +105,16 @@ function stoch_capex(sys, pol    ;main_dir = pwd(),
     mod = Model(optimizer_with_attributes(solver))
     
     
-    # Decision variables   
-    @variables(mod, begin
-        GEN[GN, T] ≥ 0       
-        CAP[GN] ≥ 0 
-        GENV[GV, S, T] ≥ 0
-        CAPV[GV, S] ≥ 0    
-        THETA[N, S, T] 
-    end)
+#= 
+    print(" > Generation constraints ...")
 
-    #print(" > Generation constraints ...")
-    pbar = ProgressUnknown(spinner=true, "Building generation constraints:")
-    # Minimum capacity of generators
-    @constraint(mod, cFixCapGenVar[g ∈ GV, s ∈ S], 
-                    CAPV[g, s] ≥ g.exist_cap)
 
-    @constraint(mod, cFixCapGenNonVar[g ∈ GN], 
-                    CAP[g] ≥ g.exist_cap)
 
-    # Maximum build capacity 
-    @constraint(mod, cMaxCapNonVar[g ∈ GN], 
-                    CAP[g] ≤ g.cap_limit)
-
-    #Main.@infiltrate
-    @constraint(mod, cMaxCapVar[g ∈ GV, s ∈ S], 
-                    CAPV[g, s] ≤ g.cap_limit)
-    next!(pbar)
-    # Maximum power generation
-    @constraint(mod, cMaxGenNonVar[g ∈ GN, t ∈ T], 
-                    GEN[g, t] ≤ CAP[g])
-
-    @constraint(mod, cMaxGenVar[g ∈ GV, s ∈ S, t ∈ T], 
-                    GENV[g, s, t] ≤ cf[g.gen_id, s.sc_id, t.tp_id]*CAPV[g, s])
-
-    finish!(pbar)
-    #print(" ok.\n")
+    
+    print(" ok.\n")
 
     print(" > Bus constraints ...")
-    # Fix bus angle of slack bus
-    fix.(THETA[slack_bus, S, T], 0)
+
 
     # Maximum power transfered by bus
     @constraint(mod, cAngleLimit[n ∈ setdiff(N, [slack_bus]), s ∈ S, t ∈ T],
@@ -246,7 +168,7 @@ function stoch_capex(sys, pol    ;main_dir = pwd(),
     mod_obj = round(value(eTotalCosts); digits=3) 
     println("> Optimization status: $mod_status")
     println("> Objective function: $mod_obj")
-
+=#
     return mod
 
 end
