@@ -1,7 +1,7 @@
 module CATSExpand
 
 # Import Julia packages
-using CSV, DataFrames, DataStructures, Tables, JuMP, MosekTools, NamedArrays
+using CSV, DataFrames, DataStructures, Tables, JuMP, MosekTools, NamedArrays, ProgressMeter
 
 # Define internal modules
 include("Utils.jl")
@@ -17,7 +17,8 @@ include("Policies.jl")
 using .Utils, .Scenarios, .Buses, .Generators, .Lines, .EnergyStorages, .Timepoints, .Policies
 
 # Export the functions we want users to be able to access easily
-export initialize, System, Scenario, Bus, Load, Generator, CapacityFactor, Line, EnergyStorage, Timepoint, Policy
+export init_system, init_policies, stoch_capex
+export System, Scenario, Bus, Load, Generator, CapacityFactor, Line, EnergyStorage, Timepoint, Policy
 
 """
 System represents the entire power system for the stochastic capacity expansion problem.
@@ -91,46 +92,37 @@ Solves a stochastic capacity expansion problem.
 function stoch_capex(sys, pol    ;main_dir = pwd(), 
                                   solver = Mosek.Optimizer,
                                     print_model = false)
-    
-    # Initialize the system by loading data
-    sys = init_system(main_dir = main_dir)
 
     # Get scenarios
-    sc = sys.sc
-    S = names(sc,1) # IDs
+    S = sys.sc
 
     # Get buses
-    bus = sys.bus
-    N = names(bus,1) # IDs
+    N = sys.bus
 
     # Get slack bus
-    slack_bus = buses[ findfirst([n.slack == true for n in buses]) ]
+    slack_bus = N[ findfirst([n.slack == true for n in N]) ]
 
     # Get load
     load = sys.load
 
     # Get generators
-    gen = sys.gen
-    G = names(gen, 1) # IDs
+    G = sys.gen
 
     # Get capacity_factors
     cf = sys.cf
 
     # Get lines
-    line = sys.line
+    L = sys.line
 
-    Y = build_admittance_matrix(N, line)
+    Y = build_admittance_matrix(N, L)
     B = imag(Y) # take susceptance matrix
-    maxFlow = get_maxFlow(N, line)
+    maxFlow = get_maxFlow(N, L)
 
     # Get storage units
-    es = sys.es
-    E = names(es, 1) # IDs
+    E = sys.es
 
     # Get timepoints
-    tp = sys.tp
-    T = names(tp, 1) # IDs
-
+    T = sys.tp
 
    """
     - GV is a list of generator IDs that has capacity factor profile.
@@ -138,9 +130,7 @@ function stoch_capex(sys, pol    ;main_dir = pwd(),
         Power generation and capacity of these generators are considered random variables 
         in the second-stage of the stochastic problem.
     """
-    GV = names(cf, 1) # get IDs of generators with capacity factor profiles
-    gensv = gens[GV] # get list of instances of generators with capacity factor profiles
-
+    GV = G[ names(cf, 1) ]
 
     """
     - GN is a list generator IDs that does not have capacity factor profile.
@@ -148,80 +138,82 @@ function stoch_capex(sys, pol    ;main_dir = pwd(),
       The power generation and capacity are considered as part of 
       first-stage of the stochastic problem.
     """
+    GN = G[ setdiff( getfield.(G.array, :gen_id) , getfield.(GV.array, :gen_id) )]
 
-    GN = setdiff(G, GV) # get IDs of generators using set difference.
-    gensn = gens[GN] # get list of instances of generators without capacity factor profiles
+    G_AT_BUS = NamedArray( [filter(g -> g.bus_id == n, G.array) for n in names(N,1)], names(N, 1), :bus_id )
+    GV_AT_BUS = intersect.(G_AT_BUS, fill(GV, length(N)))  
+    GN_AT_BUS = intersect.(G_AT_BUS, fill(GN, length(N)))    
+    
+    # Add policies
+    θlim = pol.max_diffangle
 
-
-    G_AT_BUS = NamedArray( [getfield.(filter(g -> g.bus_id == n, gens).array, :gen_id) for n in N], 
-                               (N), :bus_id )
-
-    GV_AT_BUS = intersect.(G_AT_BUS, fill(GV, length(N)))
-    GN_AT_BUS = intersect.(G_AT_BUS, fill(GN, length(N)))
-
+    
     println("> Building JuMP model:")
 
     # Create JuMP model
     mod = Model(optimizer_with_attributes(solver))
     
+    
     # Decision variables   
-    @variables(m, begin
-        GEN[GN, TPS] ≥ 0       
+    @variables(mod, begin
+        GEN[GN, T] ≥ 0       
         CAP[GN] ≥ 0 
-        GENV[GV, S, TPS] ≥ 0
+        GENV[GV, S, T] ≥ 0
         CAPV[GV, S] ≥ 0    
-        THETA[N, S, TPS] 
+        THETA[N, S, T] 
     end)
 
-    print(" > Generation constraints ...")
-    
+    #print(" > Generation constraints ...")
+    pbar = ProgressUnknown(spinner=true, "Building generation constraints:")
     # Minimum capacity of generators
     @constraint(mod, cFixCapGenVar[g ∈ GV, s ∈ S], 
-                    CAPV[g, s] ≥ gen[g].exist_cap)
+                    CAPV[g, s] ≥ g.exist_cap)
 
     @constraint(mod, cFixCapGenNonVar[g ∈ GN], 
-                    CAP[g] ≥ gen[g].exist_cap)
+                    CAP[g] ≥ g.exist_cap)
 
     # Maximum build capacity 
     @constraint(mod, cMaxCapNonVar[g ∈ GN], 
-                    CAP[g] ≤ gen[g].cap_limit)
+                    CAP[g] ≤ g.cap_limit)
 
     #Main.@infiltrate
     @constraint(mod, cMaxCapVar[g ∈ GV, s ∈ S], 
-                    CAPV[g, s] ≤ gen[g].cap_limit)
-    
+                    CAPV[g, s] ≤ g.cap_limit)
+    next!(pbar)
     # Maximum power generation
     @constraint(mod, cMaxGenNonVar[g ∈ GN, t ∈ T], 
                     GEN[g, t] ≤ CAP[g])
 
     @constraint(mod, cMaxGenVar[g ∈ GV, s ∈ S, t ∈ T], 
-                    GENV[g, s, t] ≤ cf[g, s, t]*CAPV[g, s])
+                    GENV[g, s, t] ≤ cf[g.gen_id, s.sc_id, t.tp_id]*CAPV[g, s])
 
-    print(" ok.\n")
+    finish!(pbar)
+    #print(" ok.\n")
 
     print(" > Bus constraints ...")
     # Fix bus angle of slack bus
     fix.(THETA[slack_bus, S, T], 0)
 
     # Maximum power transfered by bus
-    @constraint(mod, cMaxFlowAtBus[n ∈ setdiff(N, slack_bus), s ∈ S, t ∈ T],
+    @constraint(mod, cAngleLimit[n ∈ setdiff(N, [slack_bus]), s ∈ S, t ∈ T],
                     -θlim ≤ THETA[n, s, t] ≤ θlim)
 
     # Power generation by bus
     @expression(mod, eGenAtBus[n ∈ N, s ∈ S, t ∈ T], 
-                    sum(GEN[g, t] for g ∈ GN_AT_BUS[n]) + sum(GENV[g, s, t] for g ∈ GV_AT_BUS[n]) )
+                    sum(GEN[g, t] for g ∈ GN_AT_BUS[n.bus_id]) 
+                    + sum(GENV[g, s, t] for g ∈ GV_AT_BUS[n.bus_id]) )
 
     # DC Power flow transfered from a bus
     @expression(mod, eFlowAtBus[n ∈ N, s ∈ S, t ∈ T], 
-                    sum(B[n,m] * (THETA[n, s, t] - THETA[m, s, t]) for m in N))
+                    sum(B[n.bus_id, m.bus_id] * (THETA[n, s, t] - THETA[m, s, t]) for m in N))
 
     # Maximum power transfered by bus
     @constraint(mod, cMaxFlowAtBus[n ∈ N, s ∈ S, t ∈ T],
-                    -maxFlow[n] ≤ eFlowAtBus[n, s, t] ≤ maxFlow[n])
+                    -maxFlow[n.bus_id] ≤ eFlowAtBus[n, s, t] ≤ maxFlow[n.bus_id])
 
     # Power balance
     @constraint(mod, cGenBalance[n ∈ N, s ∈ S, t ∈ T], 
-                    eGenAtBus[n, s, t] ≥ load[n, s, t] + eFlowAtBus[n, s, t])    
+                    eGenAtBus[n, s, t] ≥ load[n.bus_id, s.sc_id, t.tp_id] + eFlowAtBus[n, s, t])    
 
     print(" ok.\n")
 
@@ -229,16 +221,17 @@ function stoch_capex(sys, pol    ;main_dir = pwd(),
 
     # The weighted operational costs of running each generator
     @expression(mod, eVariableCosts[t ∈ T],
-                    sum(tp[t] * gen_variable_om[g] * GEN[g, t] for g ∈ GN, t ∈ TPS_IN_TS[ts]) + 
-                    1/num_scen*(sum(prob[s]*tp_duration_hrs[t]* gen_variable_om[g] * GENV[g, s, t] for g ∈ GV, s ∈ S, t ∈ TPS_IN_TS[ts]) ))
+                    sum(t.duration * g.var_om_cost * GEN[g, t] for g ∈ GN, t ∈ T) 
+                    + 1/length(S)*(sum(s.prob * t.duration * g.var_om_cost * GENV[g, s, t] for g ∈ GV, s ∈ S, t ∈ T) ))
     #Main.@infiltrate
     # Fixed costs 
 	@expression(mod, eFixedCosts,
-                    sum(gen_inv_cost[g] * CAP[g] for g ∈ GN) + 1/num_scen*sum( (prob[s] * gen_inv_cost[g] * CAPV[g, s]) for g ∈ GV, s ∈ S ))
+                    sum(g.invest_cost * CAP[g] for g ∈ GN) 
+                    + 1/length(S)*sum( (s.prob * g.invest_cost * CAPV[g, s]) for g ∈ GV, s ∈ S ))
 
     # Total costs
     @expression(mod, eTotalCosts,
-                    sum(eTimeSeriesVariableCosts[ts] for ts ∈ TS) + eFixedCosts)
+                    sum(eVariableCosts[t] for t ∈ T) + eFixedCosts)
     
     @objective(mod, Min, eTotalCosts)
     print(" ok.\n")
@@ -249,10 +242,10 @@ function stoch_capex(sys, pol    ;main_dir = pwd(),
 
     print("\n")
 
-    m_status = termination_status(m)
-    m_obj = round(value(eTotalCosts); digits=3) 
-    println("> Optimization status: $m_status")
-    println("> Objective function: $m_obj")
+    mod_status = termination_status(mod)
+    mod_obj = round(value(eTotalCosts); digits=3) 
+    println("> Optimization status: $mod_status")
+    println("> Objective function: $mod_obj")
 
     return mod
 

@@ -79,14 +79,14 @@ This function builds the admittance matrix of any power system.
 TODO: add hint type to the lines argument. We may need to import the Line Struct.
 
 """
-function build_admittance_matrix(N:: Vector{String}, lines::Vector{Line}; include_shunts=false) :: NamedArray{ComplexF64}
+function build_admittance_matrix(N, lines; include_shunts=false) :: NamedArray{ComplexF64}
 
     # Define admittance matrix (actually it is NamedArray)
     # Note: we opt to use a NamedArray so N does not have to be a vector of numbers
     #       then, the user has more flexibility to access the admittance matrix, for example, Y["sandiego", "lima"]
     num_buses = length(N)
-
-    Y =  NamedArray( zeros(Complex, num_buses, num_buses), (N, N), (:bus_id, :bus_id))
+    bus_ids = names(N, 1)
+    Y =  NamedArray( zeros(Complex, num_buses, num_buses), (bus_ids, bus_ids), (:bus_id, :bus_id))
     
     for line in lines
         # Calculate branch admittance
@@ -132,10 +132,11 @@ end
             "lima"    => 1000
 
 """
-function get_maxFlow(N:: Vector{String}, lines:: Vector{Line}):: NamedArray{Float64}
+function get_maxFlow(N, lines):: NamedArray{Float64}
 
     num_buses = length(N)
-    maxFlow =  NamedArray( zeros(Float64, num_buses), (N), :bus_id )
+    bus_ids = names(N, 1)
+    maxFlow =  NamedArray( zeros(Float64, num_buses), (bus_ids), :bus_id )
 
     for line in lines
         # Extract from_bus and to_bus from line instance

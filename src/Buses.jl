@@ -43,7 +43,7 @@ Load represents the load demand at a specific bus, scenario, and timepoint.
 struct Load
     bus_id:: String
     sc_id:: String
-    t_id:: String
+    tp_id:: String
     load:: Float64
 end
 
@@ -65,7 +65,7 @@ function load_data(inputs_dir:: String):: Tuple{NamedArray{Bus}, NamedArray{Unio
     l = to_Structs(Load, inputs_dir, "loads.csv")
     
     # Transform load data into a multidimensional NamedArray
-    load = to_multidim_NamedArray(l, [:bus_id, :sc_id, :t_id], :load)
+    load = to_multidim_NamedArray(l, [:bus_id, :sc_id, :tp_id], :load)
 
     return buses, load
 end

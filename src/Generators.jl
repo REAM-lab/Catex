@@ -50,8 +50,8 @@ at a specific scenario and timepoint.
 """
 struct CapacityFactor
     gen_id:: String
-    tp_id:: String
     sc_id:: String
+    tp_id:: String
     capacity_factor:: Float64
 end
 
@@ -74,7 +74,7 @@ function load_data(inputs_dir:: String):: Tuple{NamedArray{Generator}, NamedArra
     c = to_Structs(CapacityFactor, inputs_dir, "capacity_factors.csv")
 
     # Transform capacity factor data into a multidimensional NamedArray
-    cf = to_multidim_NamedArray(c, [:gen_id, :tp_id, :sc_id], :capacity_factor)
+    cf = to_multidim_NamedArray(c, [:gen_id, :sc_id, :tp_id], :capacity_factor)
 
     return gens, cf
 end
