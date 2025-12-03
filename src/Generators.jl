@@ -10,7 +10,7 @@ using NamedArrays, JuMP, DataFrames, CSV
 using ..Utils
 
 # Export variables and functions
-export Generator, load_data, stochastic_capex_model!, toCSV_stochastic_capex
+export Generator, process_cf, stochastic_capex_model!, toCSV_stochastic_capex
 
 """
 Generator represents a generation project or existing generator in the power system.
@@ -59,13 +59,13 @@ end
 """
 Load generator data from a CSV file and return it as a NamedArray of Generator structures.
 """
-function process_cf(dir_file)
+function process_cf(inputs_dir:: String) :: NamedArray{Union{Missing, Float64}}
 
     # Load capacity factor data
-    cf = to_structs(CapacityFactor, dir_file; add_id_col = false)
+    cf = to_structs(CapacityFactor, joinpath(inputs_dir, "capacity_factors.csv"); add_id_col = false)
 
     # Transform capacity factor data into a multidimensional NamedArray
-    cf = to_multidim_NamedArray(cf, [:gen_name, :sc_name, :tp_name], :capacity_factor)
+    cf = to_multidim_array(cf, [:gen_name, :sc_name, :tp_name], :capacity_factor)
 
     return cf
 end

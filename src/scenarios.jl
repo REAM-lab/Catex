@@ -19,7 +19,8 @@ Scenario represents a scenario in the stochastic capacity expansion problem.
 - prob: probability of the scenario
 """
 struct Scenario
-    sc_id:: String
+    id:: Int64
+    name:: String
     prob:: Float64
 end
 

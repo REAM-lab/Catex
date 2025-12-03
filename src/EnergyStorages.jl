@@ -23,9 +23,10 @@ Energy storage represents an energy storage system in the power system.
 - duration: duration of the storage system at full power (hours)
 """
 struct EnergyStorage 
-    es_id:: String
-    es_tech:: String
-    bus_id:: String
+    id:: Int64
+    name:: String
+    tech:: String
+    bus_name:: String
     invest_cost:: Float64
     exist_power_cap:: Float64
     exist_energy_cap:: Float64

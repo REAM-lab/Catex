@@ -21,7 +21,8 @@ stochastic capacity expansion problem.
 - duration: duration of the timepoint in hours
 """
 struct Timepoint
-    tp_id:: String
+    id:: Int64
+    name:: String
     timestamp:: Int64
     duration:: Float64
 end 

@@ -10,7 +10,7 @@ using NamedArrays, JuMP
 using ..Utils
 
 # Export variables and functions
-export Bus, Line, load_data, stochastic_capex_model!
+export Bus, Line, process_load, stochastic_capex_model!
 
 """
 Bus represents a bus or node in the power system.
@@ -85,7 +85,7 @@ Load bus data from a CSV file and return it as a NamedArray of Bus structures.
 function process_load(inputs_dir:: String):: NamedArray{Union{Missing, Float64}}
 
     # Load load data
-    load = to_structs(Load, joinpath(inputs_dir,"loads.csv"))
+    load = to_structs(Load, joinpath(inputs_dir,"loads.csv"); add_id_col = false)
     
     # Transform load data into a multidimensional NamedArray
     load = to_multidim_array(load, [:bus_name, :sc_name, :tp_name], :load)
@@ -148,8 +148,8 @@ function build_admittance_matrix(N:: Vector{Bus}, L:: Vector{Line}; include_shun
         Y[to_bus, from_bus] -= y_branch
 
         # Diagonal elements. Note: Y_ii = y_1i + y2i + ... + yii + ...
-        y_at_bus = y_branch + include_shunts ? y_shunt : 0
-        Y[from_bus, from_bus] += y_at_bus + 
+        y_at_bus = y_branch + (include_shunts ? y_shunt : 0)
+        Y[from_bus, from_bus] += y_at_bus 
         Y[to_bus, to_bus] += y_at_bus
 
     end

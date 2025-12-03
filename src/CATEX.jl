@@ -83,8 +83,8 @@ function init_system(;main_dir = pwd())
     G = to_structs(Generator, joinpath(inputs_dir, "generators.csv"))
     E = to_structs(EnergyStorage, joinpath(inputs_dir, "energy_storages.csv"))
 
-    cf = process_cf(joinpath(inputs_dir, "capacity_factors.csv"))
-    load = process_load(joinpath(inputs_dir, "loads.csv"))
+    cf = process_cf(inputs_dir)
+    load = process_load(inputs_dir)
 
     # Create instance of System struct
     sys = System(S, T, N, load, G, cf, L, E)
@@ -96,7 +96,7 @@ end
 function init_policies(;main_dir = pwd())   
 
     print("> Initializing policies data...")
-    
+
     # Create instance of Policy struct
     pol = load_policies(joinpath(main_dir, "inputs"))
 

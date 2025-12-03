@@ -12,15 +12,15 @@ function to_structs(structure::DataType, file_dir:: String; add_id_col = true)::
 
     first_twolines = CSV.read(file_dir, DataFrame; limit=1)
     csv_header = Tuple(propertynames(first_twolines))
-
+    
     if add_id_col
-        csv_header = (csv_header..., :id) 
+        csv_header = (:id, csv_header...) 
     end
-
+    
     @assert csv_header == struct_names """Incorrect column names of $file_dir.
                                           Column names must be $struct_names"""
 
-    df = CSV.read(file_dir, DataFrame; types=Dict(zip(struct_names, struct_types)))
+    df = CSV.read(file_dir, DataFrame; types=Dict(zip(struct_names, struct_types)), validate=false)
 
     if add_id_col
         insertcols!(df, 1, :id => 1:nrow(df))
@@ -28,20 +28,16 @@ function to_structs(structure::DataType, file_dir:: String; add_id_col = true)::
 
     cols = Tuple(df[!, col] for col in names(df))
     V = structure.(cols...)    
-    
+
     return V
 end
 
-function to_multidim_array(structures:: Vector{T}, dims:: Vector{Symbol}, value:: Symbol; asNamedArray = false) where {T} 
+function to_multidim_array(structures:: Vector{T}, dims:: Vector{Symbol}, value:: Symbol):: NamedArray{Union{Missing, Float64}} where {T} 
     
     # Get unique values in each dimensions, for example if dims=[:gen], then vals_in_dim=[["sd", "lima"]]
     vals_in_dim = [unique(getfield.(structures, d)) for (_, d) in enumerate(dims)]
     
-    arr = Array{Union{Missing, Float64}}(missing, length.(vals_in_dim)...)
-
-    if asNamedArray
-        arr = NamedArray(arr, vals_in_dim, dims)
-    end
+    arr = NamedArray(Array{Union{Missing, Float64}}(missing, length.(vals_in_dim)...), vals_in_dim, dims)
 
     for s in structures
         arr[getfield.(Ref(s), dims)...] = getfield(s, value)
