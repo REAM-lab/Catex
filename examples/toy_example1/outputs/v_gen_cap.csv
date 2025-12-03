@@ -1,5 +1,5 @@
 gen_id,sc_id,GenCapacity
-sun_lim,low,2.5675675675675675
-winds,low,11.48648648648648
-sun_lim,high,14.999999999999977
-winds,high,5.000000000000011
+sun_lim,low,3.3333333333333335
+winds,low,11.33333333333334
+sun_lim,high,14.999999999999995
+winds,high,5.0

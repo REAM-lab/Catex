@@ -27,6 +27,7 @@ Generator represents a generation project or existing generator in the power sys
 - var_om_cost: variable operation and maintenance cost (USD/MW)
 """
 struct Generator
+    idx:: Int64
     gen_id:: String
     gen_tech:: String
     bus_id:: String
@@ -55,100 +56,99 @@ struct CapacityFactor
     capacity_factor:: Float64
 end
 
+struct CapacityFactorIdx
+    gen_idx:: Int64
+    sc_idx:: Int64
+    tp_idx:: Int64
+    capacity_factor:: Float64
+end
+
 
 """
 Load generator data from a CSV file and return it as a NamedArray of Generator structures.
 """
-function load_data(inputs_dir:: String):: Tuple{NamedArray{Generator}, NamedArray{Union{Missing, Float64}}}
-
-    # Get a list of instances of generators structures
-    gens = to_Structs(Generator, inputs_dir, "generators.csv")
-
-    # Get a list of the generator IDs
-    G = getfield.(gens, :gen_id)
-
-    # Transform gens into NamedArray, so we can access generators by their IDs
-    gens = NamedArray(gens, (G), :gen_id)
+function process_cf(G:: Vector{Generator}, S, T, dir_file)
 
     # Load capacity factor data
-    c = to_Structs(CapacityFactor, inputs_dir, "capacity_factors.csv")
+    cf = to_structs(CapacityFactor, dir_file)
+
+    cf = [CapacityFactorIdx( findfirst(g -> g.gen_id == c.gen_id, G), 
+                             findfirst(s -> s.sc_id == c.sc_id, S), 
+                             findfirst(s -> s.sc_id == c.sc_id, S), c.capacity_factor)  for c in cf]
 
     # Transform capacity factor data into a multidimensional NamedArray
-    cf = to_multidim_NamedArray(c, [:gen_id, :sc_id, :tp_id], :capacity_factor)
+    cf = to_multidim_NamedArray(cf, [:gen_idx, :sc_idx, :tp_idx], :capacity_factor)
 
-    return gens, cf
+    return cf
 end
 
 function stochastic_capex_model!(mod:: Model, sys, pol)
 
-    S = sys.S
-    T = sys.T
-    G = sys.G
-    cf = sys.cf
-    N = sys.N
-
-    Nids = names(N, 1)
+    S = @views sys.S
+    T = @views sys.T
+    G = @views sys.G
+    cf = @views sys.cf
+    N = @views sys.N
 
     """
-    - GV is a list of generator IDs that has capacity factor profile.
-    - gensv is a list of instances of generators with capacity factor profiles.
+    - GV is a vector of instances of generators with capacity factor profiles.
         Power generation and capacity of these generators are considered random variables 
         in the second-stage of the stochastic problem.
     """
     GV = G[ names(cf, 1) ]
 
     """
-    - GN is a list generator IDs that does not have capacity factor profile.
-    - gensn is a list of instances of generators without capacity factor profiles.
+    - GN is a vector of instances of generators without capacity factor profiles.
       The power generation and capacity are considered as part of 
       first-stage of the stochastic problem.
     """
-    GN = G[ setdiff( getfield.(G.array, :gen_id) , getfield.(GV.array, :gen_id) )]
+    GN = G[ setdiff( getfield.(G, :gen_id) , getfield.(GV, :gen_id) )]
 
-    G_AT_BUS = NamedArray( [filter(g -> g.bus_id == n, G.array) for n in Nids], Nids, :bus_id )
-    GV_AT_BUS= intersect.(G_AT_BUS, fill(GV, length(Nids)))  
-    GN_AT_BUS = intersect.(G_AT_BUS, fill(GN, length(Nids)))    
+    G_AT_BUS = [filter(g -> g.bus_id == n.bus_id, G) for n in N]
+    GV_AT_BUS= intersect.(G_AT_BUS, fill(GV, length(N)))  
+    GN_AT_BUS = intersect.(G_AT_BUS, fill(GN, length(N)))    
     
     # Define generation variables
     @variables(mod, begin
-            GEN[GN, T] ≥ 0       
-            CAP[GN] ≥ 0 
-            vGEN[GV, S, T] ≥ 0
-            vCAP[GV, S] ≥ 0    
+            vGEN[GN, T] ≥ 0       
+            vCAP[GN] ≥ 0 
+            vGENV[GV, S, T] ≥ 0
+            vCAPV[GV, S] ≥ 0    
             end)
 
     # Minimum capacity of generators
     @constraint(mod, cFixCapGenVar[g ∈ GV, s ∈ S], 
-                    vCAP[g, s] ≥ g.exist_cap)
+                    vCAPV[g, s] ≥ g.exist_cap)
 
     @constraint(mod, cFixCapGenNonVar[g ∈ GN], 
-                    CAP[g] ≥ g.exist_cap)
+                    vCAP[g] ≥ g.exist_cap)
 
     # Maximum build capacity 
     @constraint(mod, cMaxCapNonVar[g ∈ GN], 
-                    CAP[g] ≤ g.cap_limit)
-
+                    vCAP[g] ≤ g.cap_limit)
 
     @constraint(mod, cMaxCapVar[g ∈ GV, s ∈ S], 
-                    vCAP[g, s] ≤ g.cap_limit)
+                    vCAPV[g, s] ≤ g.cap_limit)
     
     # Maximum power generation
     @constraint(mod, cMaxGenNonVar[g ∈ GN, t ∈ T], 
-                    GEN[g, t] ≤ CAP[g])
+                    vGEN[g, t] ≤ vCAP[g])
 
     @constraint(mod, cMaxGenVar[g ∈ GV, s ∈ S, t ∈ T], 
-                    vGEN[g, s, t] ≤ cf[g.gen_id, s.sc_id, t.tp_id]*vCAP[g, s])
+                    vGEN[g, s, t] ≤ cf[g.idx, s.idx, t.idx]*vCAP[g, s])
 
     # Power generation by bus
     @expression(mod, eGenAtBus[n ∈ N, s ∈ S, t ∈ T], 
-                    sum(GEN[g, t] for g ∈ GN_AT_BUS[n.bus_id]) 
-                    + sum(vGEN[g, s, t] for g ∈ GV_AT_BUS[n.bus_id]) )
+                    sum(GEN[g, t] for g ∈ GN_AT_BUS[n.idx]) 
+                    + sum(vGEN[g, s, t] for g ∈ GV_AT_BUS[n.idx]) )
 
     
     # The weighted operational costs of running each generator
     @expression(mod, eVariableCosts,
-                    sum(t.duration * g.var_om_cost * GEN[g, t] for g ∈ GN, t ∈ T) 
-                    + 1/length(S)*(sum(s.prob * t.duration * g.var_om_cost * vGEN[g, s, t] for g ∈ GV, s ∈ S, t ∈ T) ))
+                    (sum(t.duration * g.var_om_cost * GEN[g, t] 
+                        + t.duration * g.c1 * GEN[g, t] for g ∈ GN, t ∈ T) +
+                    + 1/length(S)*(sum(s.prob * t.duration * g.c1 * vGEN[g, s, t] 
+                                     + s.prob * t.duration * g.var_om_cost * vGEN[g, s, t] for g ∈ GV, s ∈ S, t ∈ T) ) ) )
 
     # Fixed costs 
 	@expression(mod, eFixedCosts,

@@ -4,31 +4,45 @@ module Utils
 using DataFrames, JuMP, CSV, NamedArrays
 
 # Export variables and functions
-export to_Structs, to_multidim_NamedArray, to_Df
+export to_structs, to_multidim_array, to_Df
 
-function to_Structs(structure::DataType, inputs_dir:: String, filename:: String):: Vector{structure}
-    file_dir = joinpath(inputs_dir, filename)
+function to_structs(structure::DataType, file_dir:: String; create_idx = true):: Vector{structure}
     struct_names = fieldnames(structure)
     struct_types = fieldtypes(structure)
 
-    first_csvlines = CSV.File(joinpath(inputs_dir, filename); limit=1)
-    csv_header = Tuple(propertynames(first_csvlines))
+    if create_idx
+        first_twolines = CSV.read(file_dir; limit=1)
+        insertcols!(first_twolines, 1, :idx => 1:nrow(first_twolines))
+    else
+        first_twolines = CSV.File(file_dir; limit=1)
+    end
 
-    @assert csv_header == struct_names """Column names of $filename does not match the fields of the structure $structure."""
+    csv_header = Tuple(propertynames(first_twolines))
+
+    @assert csv_header == struct_names """Column names of $file_dir does not match the fields of the structure $structure."""
 
     df = CSV.read(file_dir, DataFrame; types=Dict(zip(struct_names, struct_types)))
+
+    if create_idx
+        insertcols!(df, 1, :idx => 1:nrow(df))
+    end
+
     cols = Tuple(df[!, col] for col in names(df))
     V = structure.(cols...)    
     
     return V
 end
 
-function to_multidim_NamedArray(structures:: Vector{T}, dims:: Vector{Symbol}, value:: Symbol):: NamedArray{Union{Missing, Float64}} where {T} 
-  
-    vals_in_dim = [unique(getfield.(structures, d)) for (i, d) in enumerate(dims)]
+function to_multidim_array(structures:: Vector{T}, dims:: Vector{Symbol}, value:: Symbol; asNamedArray = false) where {T} 
+    
+    # Get unique values in each dimensions, for example if dims=[:gen], then vals_in_dim=[["sd", "lima"]]
+    vals_in_dim = [unique(getfield.(structures, d)) for (_, d) in enumerate(dims)]
     
     arr = Array{Union{Missing, Float64}}(missing, length.(vals_in_dim)...)
-    arr = NamedArray(arr, vals_in_dim, dims)
+
+    if asNamedArray
+        arr = NamedArray(arr, vals_in_dim, dims)
+    end
 
     for s in structures
         arr[getfield.(Ref(s), dims)...] = getfield(s, value)

@@ -29,24 +29,25 @@ export System, Scenario, Bus, Load, Generator, CapacityFactor, Line, EnergyStora
 """
 System represents the entire power system for the stochastic capacity expansion problem.
 # Fields:
-- sc: NamedArray of instances of Scenario structure
-- buses: NamedArray of instances of Bus structure
-- loads: multidimensional NamedArray of load data
-- gen: NamedArray of instances of Generator structure
-- cf: multidimensional NamedArray of capacity factors data
-- line: NamedArray of instances of Line structure
-- es: NamedArray of instances of EnergyStorage structure
-- tp: NamedArray of instances of Timepoint structure
+- sc: Vector containing instances of Scenario structure
+- buses: Vector containing instances of Bus structure
+- loads: multidimensional array of load data
+- gen: Vector containing instances of Generator structure
+- cf: multidimensional array of capacity factors data
+- line: Vector containing instances of Line structure
+- es: Vector containing instances of EnergyStorage structure
+- tp: Vector containing instances of Timepoint structure
 """
 struct System
-    S:: NamedArray{Scenario}
-    N:: NamedArray{Bus}
-    load:: NamedArray{Union{Missing, Float64}}
-    G:: NamedArray{Generator}
-    cf:: NamedArray{Union{Missing, Float64}}
-    L:: NamedArray{Line}
-    E:: NamedArray{EnergyStorage}
-    T:: NamedArray{Timepoint}
+    S:: Vector{Scenario}
+    T:: Vector{Timepoint}
+    N:: Vector{Bus}
+    load:: Array{Union{Missing, Float64y}}
+    G:: Vector{Generator}
+    cf:: Array{Union{Missing, Float64}}
+    L:: Vector{Line}
+    E:: Vector{EnergyStorage}
+
 end
 
 """
@@ -54,12 +55,12 @@ This function defines how to display the System struct in the REPL or when print
 """
 function Base.show(io::IO, ::MIME"text/plain", sys::System)
     println(io, "CATEX System:")
-    println(io, "├ N (buses) = ", names(sys.N, 1))
-    println(io, "├ L (lines) = ", names(sys.L, 1))
-    println(io, "├ G (generators) = ", names(sys.G, 1))
-    println(io, "├ E (energy storages) = ", names(sys.E, 1))
-    println(io, "├ S (scenarios) = ", names(sys.S, 1))
-    println(io, "└ T (timepoints) = ", names(sys.T, 1))
+    println(io, "├ N (buses) = ", getfield.(sys.N, :bus_id))
+    println(io, "├ L (lines) = ", getfield.(sys.L, :line_id))
+    println(io, "├ G (generators) = ", getfield.(sys.G, :gen_id))
+    println(io, "├ E (energy storages) = ", getfield.(sys.E, :es_id))
+    println(io, "├ S (scenarios) = ", getfield.(sys.S, :sc_id))
+    println(io, "└ T (timepoints) = ", getfield.(sys.T, :tp_id))
 end
 
 """
@@ -76,14 +77,18 @@ function init_system(;main_dir = pwd())
     inputs_dir = joinpath(main_dir, "inputs")
     
     # Fill in the fields of the System struct with CSV data
-    scs = Scenarios.load_data(inputs_dir)
-    buses, load, lines = Transmission.load_data(inputs_dir)
-    gens, cf = Generators.load_data(inputs_dir)
-    ess = EnergyStorages.load_data(inputs_dir)
-    tps = Timepoints.load_data(inputs_dir)
+    S = to_structs(Scenario, joinpath(inputs_dir, "scenarios.csv"))
+    T = to_structs(Timepoint, joinpath(inputs_dir, "timepoints.csv"))
+    N = to_structs(Bus, joinpath(inputs_dir, "buses.csv"))
+    L = to_structs(Line, joinpath(inputs_dir, "lines.csv"))
+    G = to_structs(Generator, joinpath(inputs_dir, "generators.csv"))
+    E = to_structs(EnergyStorage, joinpath(inputs_dir, "energy_storages.csv"))
+
+    cf = process_cf(G, S, T, joinpath(inputs_dir, "capacity_factors.csv"))
+    load = process_load(N, S, T, joinpath(inputs_dir, "loads.csv"))
 
     # Create instance of System struct
-    sys = System(scs, buses, load, gens, cf, lines, ess, tps)
+    sys = System(S, T, N, load, G, cf, L, E)
 
     println("ok.")
     return sys
@@ -118,6 +123,11 @@ function solve_stochastic_capex_model(sys, pol    ;main_dir = pwd(),
     print("> Generator vars and constraints ... ")
     tep = @elapsed Generators.stochastic_capex_model!(mod, sys, pol)
     println(" ok [$(round(tep, digits = 3)) seconds].")
+
+    # Under development ... 
+    #print("> Energy storage vars and constraints ... ")
+    #tep = @elapsed EnergyStorage.stochastic_capex_model!(mod, sys, pol)
+    #println(" ok [$(round(tep, digits = 3)) seconds].")
 
     print("> Transmission vars and constraints ... ")
     tep = @elapsed Transmission.stochastic_capex_model!(mod, sys, pol)

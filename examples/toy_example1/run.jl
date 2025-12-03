@@ -1,4 +1,5 @@
 # Use Julia package
+using Revise
 using Infiltrator
 using CATEX, MosekTools, JuMP, DataFrames, CSV, NamedArrays
 

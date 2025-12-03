@@ -1,7 +1,7 @@
 module EnergyStorages
 
 # Use Julia standard libraries and third-party packages
-using NamedArrays
+using NamedArrays, JuMP
 
 # Use internal modules
 using ..Utils
@@ -30,20 +30,42 @@ struct EnergyStorage
     exist_power_cap:: Float64
     exist_energy_cap:: Float64
     var_om_cost:: Float64
-    efficiency:: Float64
+    charge_effic:: Float64
+    discha_effic:: Float64
     duration:: Float64
 end
 
-function load_data(inputs_dir:: String):: NamedArray{EnergyStorage}
-    # Get a list of instances of EnergyStorage structures
-    ess = to_Structs(EnergyStorage, inputs_dir, "energy_storages.csv")
+function stochastic_capex_model!(mod:: Model, sys, pol)
 
-    # Get a list of the storage IDs
-    E = getfield.(ess, :es_id)
+    N = @views sys.N
+    T = @views sys.T
+    S = @views sys.S
 
-    # Transform storage into NamedArray, so we can access storages by their IDs
-    ess = NamedArray(ess, (E))
+    Nids = getfield.(N, :bus_id)
 
-    return ess
+    E_AT_BUS = [filter(e -> e.bus_id == n, E) for n in Nids]
+
+    # Define generation variables
+    @variables(mod, begin
+            vDISCHA[E, S, T] ≥ 0
+            vCHARGE[E, S, T] ≥ 0       
+            vSOC[E, S, T] ≥ 0
+    end)
+
+    # Define constraints for energy storage systems
+    @constraint(mod, cMaxCharge[e ∈ E, s ∈ S, t ∈ T], 
+                        vCHARGE[e, s, t] ≤ e.max)
+    
+    # Energy capacity must be less ×4 the power capacity
+    #@constraint(mod, cMaxStateOfCharge[e ∈ E, s ∈ S, t ∈ T], 
+    #                    vSOC[e, s, t] ≤ e.duration * e.exist_power_cap)
+    
+    # SOC in the next time is a function of SOC in the pervious time
+    # with circular wrapping for the first and last t ∈ P_i
+    
+    prev = [idx == 1 ? T[end] : T[idx - 1] for (idx,_) in enumerate(T)]
+
+    @constraint(mod, cStateOfCharge[e ∈ E, s ∈ S, t ∈ T],
+                        vSOC[e, s, t] == vSOC[e, s, prev[t.idx]] + vCHARGE[e, s, t]*e.charge_effic - vDISCHA[e, s, t]*1/e.discha_effic)
 end
 end # module EnergyStorage
