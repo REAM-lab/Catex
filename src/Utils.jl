@@ -4,7 +4,7 @@ module Utils
 using DataFrames, JuMP, CSV, NamedArrays
 
 # Export variables and functions
-export to_structs, to_multidim_array, to_Df
+export to_structs, to_multidim_array, to_df
 
 function to_structs(structure::DataType, file_dir:: String; add_id_col = true):: Vector{structure}
     struct_names = fieldnames(structure)
@@ -95,30 +95,31 @@ This function returns a csv file with the numerical solution of a JuMP variable 
 ## Returns:
     - A csv file in the specified directory.
 """
-function to_Df(var_name:: JuMP.Containers.DenseAxisArray, header:: Vector, outputs_dir:: String, filename:: String; print_csv = true)
-    
-    dir_file = joinpath(outputs_dir, filename) # directory to save the csv file
+function to_df(var_name:: JuMP.Containers.DenseAxisArray, 
+                df_colnames:: Vector{Symbol}
+                ; struct_fields=df_colnames[1:end-1], csv_dir=nothing) :: DataFrame
 
     # Transform DenseAxisArray into DataFrame.
     # The argument 'value' is a reserved word in JuMP to get the numerical value of a variable.
     # The argument 'var_name' is the name of the variable defined in the JuMP model. For example, GEN, CAP.
-    # The argument 'header' is a vector with the headers of the dataframe. It should be consistent with the dimensions.
-    df = DataFrame(Containers.rowtable(value, var_name; header = header))
+    # The argument 'header' is a vector with the headers we want for the dataframe. It should be consistent with the dimensions.
+    df = DataFrame(Containers.rowtable(value, var_name; header = df_colnames))
 
     # The following loop is to replace the columns of the df with the actual IDs.
     # If we omit this loop, the columns will contain the entire struct, e.g., Timepoint(tp_id="tp1", period_id="p1", weight=1.0)
     # Actually, it is useful to have the entire struct in each cell of the Dataframe, because we can access its bus_id, and then make another dataframe.
-    for h in header[begin:end-1]
-    df[!, h] = getfield.(df[!, h], h)
+    cols = @view df_colnames[1:end-1]
+    for (c, f) in collect(zip(cols, struct_fields))
+        df[!, c] = getfield.(df[!, c], f)
     end
 
-    # Print csv file. By default, it is set to true.
-    if print_csv
-        CSV.write(dir_file, df)
-        println(" > $filename printed.")
+    # Print csv file in the directory csv_dir
+    if !isnothing(csv_dir)
+        CSV.write(csv_dir, df)
+        println(" > $(basename(csv_dir)) printed.")
     end
 
-    return df # return the dataframe if needed
+    return df # return the dataframe 
 end
 
 

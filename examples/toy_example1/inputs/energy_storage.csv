@@ -1,0 +1,2 @@
+﻿name,tech,bus_name,invest_cost,exist_power_cap,exist_energy_cap,power_cap_limit,var_om_cost,charge_effic,discha_effic,duration
+1,battery,2,5,0,0,1000,0,0.97,0.97,4

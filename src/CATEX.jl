@@ -14,17 +14,17 @@ include("Utils.jl")
 include("Scenarios.jl")
 include("Transmission.jl")
 include("Generators.jl")
-include("EnergyStorages.jl")
+include("EnergyStorage.jl")
 include("Timepoints.jl")
 include("Policies.jl")
 
 
 # Use internal modules
-using .Utils, .Scenarios, .Transmission, .Generators, .EnergyStorages, .Timepoints, .Policies
+using .Utils, .Scenarios, .Transmission, .Generators, .EnergyStorage, .Timepoints, .Policies
 
 # Export the functions we want users to be able to access easily
 export init_system, init_policies, solve_stochastic_capex_model, run_stocapex
-export System, Scenario, Bus, Load, Generator, CapacityFactor, Line, EnergyStorage, Timepoint, Policy
+export System, Scenario, Bus, Load, Generator, CapacityFactor, Line, EnergyStorageUnit, Timepoint, Policy
 
 """
 System represents the entire power system for the stochastic capacity expansion problem.
@@ -46,7 +46,7 @@ struct System
     G:: Vector{Generator}
     cf:: NamedArray{Union{Missing, Float64}}
     L:: Vector{Line}
-    E:: Vector{EnergyStorage}
+    E:: Vector{EnergyStorageUnit}
 end
 
 """
@@ -81,7 +81,7 @@ function init_system(;main_dir = pwd())
     N = to_structs(Bus, joinpath(inputs_dir, "buses.csv"))
     L = to_structs(Line, joinpath(inputs_dir, "lines.csv"))
     G = to_structs(Generator, joinpath(inputs_dir, "generators.csv"))
-    E = to_structs(EnergyStorage, joinpath(inputs_dir, "energy_storages.csv"))
+    E = to_structs(EnergyStorageUnit, joinpath(inputs_dir, "energy_storage.csv"))
 
     cf = process_cf(inputs_dir)
     load = process_load(inputs_dir)
@@ -121,10 +121,9 @@ function solve_stochastic_capex_model(sys, pol    ;main_dir = pwd(),
     tep = @elapsed Generators.stochastic_capex_model!(mod, sys, pol)
     println(" ok [$(round(tep, digits = 3)) seconds].")
 
-    # Under development ... 
-    #print("> Energy storage vars and constraints ... ")
-    #tep = @elapsed EnergyStorage.stochastic_capex_model!(mod, sys, pol)
-    #println(" ok [$(round(tep, digits = 3)) seconds].")
+    print("> Energy storage vars and constraints ... ")
+    tep = @elapsed EnergyStorage.stochastic_capex_model!(mod, sys, pol)
+    println(" ok [$(round(tep, digits = 3)) seconds].")
 
     print("> Transmission vars and constraints ... ")
     tep = @elapsed Transmission.stochastic_capex_model!(mod, sys, pol)
@@ -134,7 +133,8 @@ function solve_stochastic_capex_model(sys, pol    ;main_dir = pwd(),
     tep = @elapsed Policies.stochastic_capex_model!(mod, sys, pol)
     println(" ok [$(round(tep, digits = 3)) seconds].")
 
-    @objective(mod, Min, mod[:eTotalCosts])
+    @expression(mod, eTotalCosts, mod[:eGenTotalCosts] + mod[:eStorTotalCosts])
+    @objective(mod, Min, eTotalCosts)
 
     # Print model to a text file if print_model==true. 
     # By default, it is print_model is false.
@@ -164,14 +164,16 @@ end
 """
 Exports results of the stochastic capacity expansion model to CSV files.
 """
-function print_stochastic_capex_results(mod:: Model; main_dir = pwd()) 
+function print_stochastic_capex_results(sys, pol, mod:: Model; main_dir = pwd()) 
 
     # Define the outputs directory
     outputs_dir = joinpath(main_dir, "outputs")
 
     println("> Printing files in $outputs_dir")
     
-    Generators.toCSV_stochastic_capex(mod, outputs_dir)
+    Generators.toCSV_stochastic_capex(sys, pol, mod, outputs_dir)
+    EnergyStorage.toCSV_stochastic_capex(sys, pol, mod, outputs_dir)
+    Transmission.toCSV_stochastic_capex(sys, pol, mod, outputs_dir)
 
 end
 
@@ -182,7 +184,7 @@ function run_stocapex(; main_dir = pwd(),
     sys = init_system(main_dir = main_dir)
     pol = init_policies(main_dir = main_dir)
     mod = solve_stochastic_capex_model(sys, pol; main_dir = main_dir, solver = solver)
-    print_stochastic_capex_results(mod; main_dir = main_dir)
+    print_stochastic_capex_results(sys, pol, mod; main_dir = main_dir)
 
     return sys, pol, mod
 end

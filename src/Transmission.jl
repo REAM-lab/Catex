@@ -4,7 +4,7 @@ Transmission Module for handling bus data in a power system.
 module Transmission
 
 # Use Julia standard libraries and third-party packages
-using NamedArrays, JuMP
+using NamedArrays, JuMP, DataFrames, CSV
 
 # Use internal modules
 using ..Utils
@@ -140,8 +140,8 @@ function build_admittance_matrix(N:: Vector{Bus}, L:: Vector{Line}; include_shun
         y_shunt = complex(line.g, line.b)
         
         # Find ids of from_bus and to_bus from line instance
-        from_bus = findfirst(n -> n.bus_name == line.from_bus, N)
-        to_bus = findfirst(n -> n.bus_name == line.to_bus, N)
+        from_bus = findfirst(n -> n.name == line.from_bus, N)
+        to_bus = findfirst(n -> n.name == line.to_bus, N)
 
         # Off-diagonal elements. Y_ij = -y_ij
         Y[from_bus, to_bus] -= y_branch
@@ -171,8 +171,8 @@ function get_maxFlow(N:: Vector{Bus}, L:: Vector{Line}):: Vector{Float64}
 
     for line in L
         # Find ids of from_bus and to_bus from line instance
-        from_bus = findfirst(n -> n.bus_name == line.from_bus, N)
-        to_bus = findfirst(n -> n.bus_name == line.to_bus, N)
+        from_bus = findfirst(n -> n.name == line.from_bus, N)
+        to_bus = findfirst(n -> n.name == line.to_bus, N)
         rate = line.rate
         
         maxFlow[from_bus] += rate
@@ -199,20 +199,21 @@ function stochastic_capex_model!(mod:: Model, sys, pol)
 
     # Get slack bus
     slack_bus_id = findfirst(n -> n.slack == true, N)
+    slack_bus = N[slack_bus_id]
 
     # Define bus angle variables
-    @variable(mod, THETA[N, S, T]) 
+    @variable(mod, vTHETA[N, S, T]) 
 
     # Fix bus angle of slack bus
-    fix.(THETA[slack_bus_id, S, T], 0)
+    fix.(vTHETA[slack_bus, S, T], 0)
 
     # Extracting expressions from other submodules
     eGenAtBus = mod[:eGenAtBus]
-    eNetChargeAtBus = mod[:eNetChargeAtBus]
+    eNetDischargeAtBus = mod[:eNetDischargeAtBus]
     
-    # DC Power flow transfered from each bus
+    # DC Power flow transfered from each bus, assumes sbase = 100 MVA for all lines
     @expression(mod, eFlowAtBus[n ∈ N, s ∈ S, t ∈ T], 
-                    sum(B[n.id, m.id] * (THETA[n, s, t] - THETA[m, s, t]) for m in N))
+                    100 * sum(B[n.id, m.id] * (vTHETA[n, s, t] - vTHETA[m, s, t]) for m in N))
 
     # Maximum power transfered at each bus
     @constraint(mod, cMaxFlowAtBus[n ∈ N, s ∈ S, t ∈ T],
@@ -220,12 +221,38 @@ function stochastic_capex_model!(mod:: Model, sys, pol)
 
     # Power balance at each bus
     @constraint(mod, cGenBalance[n ∈ N, s ∈ S, t ∈ T], 
-                    eGenAtBus[n, s, t] + eNetChargeAtBus[n, s, t] ≥ 
+                    eGenAtBus[n, s, t] + eNetDischargeAtBus[n, s, t] ≥ 
                     load[n.name, s.name, t.name] + eFlowAtBus[n, s, t])    
 
 end
 
+function toCSV_stochastic_capex(sys, pol, mod:: Model, outputs_dir:: String)
 
+    # Set of line instances
+    L = @views sys.L 
+    lines_df = DataFrame(L) #as dataframe
 
+    # Dataframe of bus angle. Columns: bus_name, sc_name, tp_name, rad
+    angle_df = to_df(mod[:vTHETA], [:bus_name, :sc_name, :tp_name, :rad]; struct_fields=[:name, :name, :name])
+
+    # Join
+    df = rightjoin(lines_df, angle_df, on=[:from_bus => :bus_name])
+    dropmissing!(df) # drop rows with missing values
+    rename!(df, [:rad => :from_bus_angle]) # rename col
+
+    # Join
+    df = rightjoin(df, angle_df, on=[:to_bus => :bus_name, :sc_name, :tp_name])
+    dropmissing!(df) # drop rows with missing values
+    rename!(df, [:rad => :to_bus_angle]) # rename col
+
+    df.y = 1 ./ (df.r + 1im * df.x) # compute branch admittance
+    df.pflow_MW = 100*(df.from_bus_angle - df.to_bus_angle) .* imag.(df.y) # compute DC power flowing in the branch, assumes Sbase = 100 MVA
+    df.fict_loss_MW = df.r .* abs.(df.pflow_MW) .* abs.(df.pflow_MW) # compute losses (not considered in the optimization)
+    select!(df, Not(:y, :r, :x, :g, :b))
+    
+    filename = "transmission_flows.csv"
+    println(" > $filename printed.")
+    CSV.write(joinpath(outputs_dir, filename), df)
+end
    
 end # module Transmission

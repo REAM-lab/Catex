@@ -1,0 +1,13 @@
+gen_name,sc_name,tp_name,DispatchGen_MW
+sun_lim,low,1,0.0
+winds,low,1,0.0
+sun_lim,high,1,0.0
+winds,high,1,0.0
+sun_lim,low,2,0.0
+winds,low,2,0.0
+sun_lim,high,2,0.0
+winds,high,2,0.0
+sun_lim,low,3,0.0
+winds,low,3,0.0
+sun_lim,high,3,0.0
+winds,high,3,0.0

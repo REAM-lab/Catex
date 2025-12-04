@@ -50,7 +50,7 @@ function stochastic_capex_model!(mod:: Model, sys, pol)
     θlim = pol.max_diffangle
 
     # Extract variables from other submodules
-    THETA = @views mod[:THETA]
+    THETA = @views mod[:vTHETA]
 
     # Maximum power transfered by bus
     @constraint(mod, cAngleLimit[n ∈ N, s ∈ S, t ∈ T],

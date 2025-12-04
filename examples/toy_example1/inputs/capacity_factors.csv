@@ -1,13 +1,4 @@
 ﻿gen_name,sc_name,tp_name,capacity_factor
-sun_lim,low,1,0.1
-sun_lim,low,2,0.2
-sun_lim,low,3,3
-winds,low,1,0.5
-winds,low,2,1
-winds,low,3,0.2
-sun_lim,high,1,0.1
-sun_lim,high,2,0.2
-sun_lim,high,3,3
-winds,high,1,0.5
-winds,high,3,1
-winds,high,2,0.2
+1,sc1,1,0.2
+1,sc1,2,0.5
+1,sc1,3,0.4

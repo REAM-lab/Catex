@@ -1,2 +1,2 @@
 ﻿name,from_bus,to_bus,rate,r,x,g,b
-bart,lima,sd,100,0.01,0.05,0.1,0.05
+1,1,2,1000,0,0.025,0,0
