@@ -82,13 +82,10 @@ function stochastic_capex_model!(mod:: Model, sys, pol)
     @constraint(mod, cMaxSOC[e ∈ E, s ∈ S, t ∈ T], 
                         vSOC[e, s, t] ≤ vECAP[e, s])
 
-    # SOC in the next time is a function of SOC in the pervious time
-    # with circular wrapping for the first and last t ∈ P_i
-    
-    prev = [id == 1 ? T[end] : T[id - 1] for (id,_) in enumerate(T)]
-
+    # SOC in the next time is a function of SOC in the previous time
+    # with circular wrapping for the first and last timepoints within a timeseries
     @constraint(mod, cStateOfCharge[e ∈ E, s ∈ S, t ∈ T],
-                        vSOC[e, s, t] == vSOC[e, s, prev[t.id]] 
+                        vSOC[e, s, t] == vSOC[e, s, T[t.prev_id]] 
                                         + vCHARGE[e, s, t]*e.charge_effic 
                                         - vDISCHA[e, s, t]*1/e.discha_effic)
 

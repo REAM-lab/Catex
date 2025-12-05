@@ -4,7 +4,7 @@ Scenarios module for managing scenario data in the stochastic capacity expansion
 module Scenarios   
 
 # Use Julia standard libraries and third-party packages
-using NamedArrays
+
 
 # Use internal modules
 using ..Utils

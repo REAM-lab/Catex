@@ -34,13 +34,6 @@ struct Bus
 end
 
 """
-This function defines how to display the Bus struct in the REPL or when printed in Julia console.
-"""
-function Base.show(io::IO, bus::Bus)
-    #print(io, "Bus(", bus.bus_id, ")")
-end
-
-"""
 Load represents the load demand at a specific bus, scenario, and timepoint.
 # Fields:
 - bus_id: ID of the bus

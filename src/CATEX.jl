@@ -15,16 +15,16 @@ include("Scenarios.jl")
 include("Transmission.jl")
 include("Generators.jl")
 include("EnergyStorage.jl")
-include("Timepoints.jl")
+include("Timescales.jl")
 include("Policies.jl")
 
 
 # Use internal modules
-using .Utils, .Scenarios, .Transmission, .Generators, .EnergyStorage, .Timepoints, .Policies
+using .Utils, .Scenarios, .Transmission, .Generators, .EnergyStorage, .Timescales, .Policies
 
 # Export the functions we want users to be able to access easily
 export init_system, init_policies, solve_stochastic_capex_model, run_stocapex
-export System, Scenario, Bus, Load, Generator, CapacityFactor, Line, EnergyStorageUnit, Timepoint, Policy
+export System, Scenario, Bus, Load, Generator, CapacityFactor, Line, EnergyStorageUnit, Timepoint, Timeseries, Policy
 
 """
 System represents the entire power system for the stochastic capacity expansion problem.
@@ -41,6 +41,7 @@ System represents the entire power system for the stochastic capacity expansion 
 struct System
     S:: Vector{Scenario}
     T:: Vector{Timepoint}
+    TS:: Vector{Timeseries}
     N:: Vector{Bus}
     load:: NamedArray{Union{Missing, Float64}}
     G:: Vector{Generator}
@@ -59,7 +60,8 @@ function Base.show(io::IO, ::MIME"text/plain", sys::System)
     println(io, "├ G (generators) = ", getfield.(sys.G, :name))
     println(io, "├ E (energy storages) = ", getfield.(sys.E, :name))
     println(io, "├ S (scenarios) = ", getfield.(sys.S, :name))
-    println(io, "└ T (timepoints) = ", getfield.(sys.T, :name))
+    println(io, "├ T (timepoints) = ", getfield.(sys.T, :name))
+    println(io, "└ TS (timeseries) = ", getfield.(sys.TS, :name))
 end
 
 """
@@ -77,17 +79,18 @@ function init_system(;main_dir = pwd())
     
     # Fill in the fields of the System struct with CSV data
     S = to_structs(Scenario, joinpath(inputs_dir, "scenarios.csv"))
-    T = to_structs(Timepoint, joinpath(inputs_dir, "timepoints.csv"))
     N = to_structs(Bus, joinpath(inputs_dir, "buses.csv"))
     L = to_structs(Line, joinpath(inputs_dir, "lines.csv"))
     G = to_structs(Generator, joinpath(inputs_dir, "generators.csv"))
     E = to_structs(EnergyStorageUnit, joinpath(inputs_dir, "energy_storage.csv"))
 
+    T, TS = Timescales.load_data(inputs_dir)
+     
     cf = process_cf(inputs_dir)
     load = process_load(inputs_dir)
 
     # Create instance of System struct
-    sys = System(S, T, N, load, G, cf, L, E)
+    sys = System(S, T, TS, N, load, G, cf, L, E)
 
     println("ok.")
     return sys

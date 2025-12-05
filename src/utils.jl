@@ -4,9 +4,28 @@ module Utils
 using DataFrames, JuMP, CSV, NamedArrays
 
 # Export variables and functions
-export to_structs, to_multidim_array, to_df
+export to_structs, to_multidim_array, to_df, convert_df_columns!
+
 
 function to_structs(structure::DataType, file_dir:: String; add_id_col = true):: Vector{structure}
+    
+    df = CSV.read(file_dir, DataFrame)
+    if add_id_col
+        insertcols!(df, 1, :id => 1:nrow(df))
+    end
+
+    field_type_pairs = Dict(fieldnames(structure) .=> fieldtypes(structure))
+    field_type_pairs = Dict((k, v) for (k,v) in field_type_pairs if k in propertynames(df))
+    convert_df_columns!(df, field_type_pairs)
+    
+    cols = Tuple(df[!, col] for col in names(df))
+
+    V = structure.(cols...)    
+
+    return V
+end
+
+function to_immutable_structs(structure::DataType, file_dir:: String; add_id_col = true):: Vector{structure}
     struct_names = fieldnames(structure)
     struct_types = fieldtypes(structure)
 
@@ -46,39 +65,19 @@ function to_multidim_array(structures:: Vector{T}, dims:: Vector{Symbol}, value:
     return arr
 end
 
-"""
-Rehashing and Resizing: When a Dict grows beyond its current allocated capacity, 
-it needs to be resized, which often involves rehashing all existing key-value pairs 
-and moving them to a larger memory location. This process can be computationally expensive, 
-especially with a large number of elements
-"""
-function to_stacked_Dict(data:: DataFrame, key:: String, value:: String)
-    col_key = data[!, Symbol(key)]
-    col_value = data[!, Symbol(value)]
-
-    tuples = collect(zip(col_key, col_value))
-
-    stacked_dict = Dict()
-
-    for (key, value) in tuples
-        if haskey(stacked_dict, key)
-            push!(stacked_dict[key], value)
+function convert_df_columns!(df::DataFrame, col_type_pairs::Dict{Symbol, DataType})
+    for (col_name, target_type) in col_type_pairs
+        if target_type == Int && eltype(df[!, col_name]) <: AbstractString
+            df[!, col_name] = parse.(target_type, df[!, col_name])
+        elseif target_type == Float64 && eltype(df[!, col_name]) <: AbstractString
+            df[!, col_name] = parse.(target_type, df[!, col_name])
+        elseif target_type == String && eltype(df[!, col_name]) == Int64
+            df[!, col_name] = string.(df[!, col_name])
         else
-            stacked_dict[key] = [value]
+            df[!, col_name] = convert.(target_type, df[!, col_name])
         end
     end
-    
-    return stacked_dict
-end
-
-function to_Dict(data:: DataFrame, key:: Symbol, value:: Symbol)
-    return Dict(Pair.(data[:, key], data[:, value]))
-end
-
-function to_tupled_Dict(data:: DataFrame, keys:: Vector{Symbol}, value:: Symbol)
-    col_keys = Tuple.(eachrow(data[:, keys]))
-    col_value = data[:, value]
-    return Dict(Pair.(col_keys, col_value))
+    return df
 end
 
 
@@ -122,6 +121,41 @@ function to_df(var_name:: JuMP.Containers.DenseAxisArray,
     return df # return the dataframe 
 end
 
+
+"""
+Rehashing and Resizing: When a Dict grows beyond its current allocated capacity, 
+it needs to be resized, which often involves rehashing all existing key-value pairs 
+and moving them to a larger memory location. This process can be computationally expensive, 
+especially with a large number of elements
+"""
+function to_stacked_Dict(data:: DataFrame, key:: String, value:: String)
+    col_key = data[!, Symbol(key)]
+    col_value = data[!, Symbol(value)]
+
+    tuples = collect(zip(col_key, col_value))
+
+    stacked_dict = Dict()
+
+    for (key, value) in tuples
+        if haskey(stacked_dict, key)
+            push!(stacked_dict[key], value)
+        else
+            stacked_dict[key] = [value]
+        end
+    end
+    
+    return stacked_dict
+end
+
+function to_Dict(data:: DataFrame, key:: Symbol, value:: Symbol)
+    return Dict(Pair.(data[:, key], data[:, value]))
+end
+
+function to_tupled_Dict(data:: DataFrame, keys:: Vector{Symbol}, value:: Symbol)
+    col_keys = Tuple.(eachrow(data[:, keys]))
+    col_value = data[:, value]
+    return Dict(Pair.(col_keys, col_value))
+end
 
 
 

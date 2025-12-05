@@ -3,6 +3,7 @@ using Revise
 using Infiltrator
 using CATEX, MosekTools, JuMP, DataFrames, CSV, NamedArrays
 
+
 # Set the main directory for the toy example
 main_dir ="/Users/paul/Documents/CATEX/examples/toy_example1"
 
