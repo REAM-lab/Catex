@@ -18,17 +18,20 @@ function to_structs(structure::DataType, file_dir:: String; add_id_col = true)::
     end
 
     # Get field names and correspoding types of the structure 
-    field_type_pairs = OrderedDict(fieldnames(structure) .=> fieldtypes(structure))
+    field_type_pairs = Dict(fieldnames(structure) .=> fieldtypes(structure))
 
     # Filter field_type_pairs to only include columns names that exist in the DataFrame
-    field_type_pairs = OrderedDict((k, v) for (k,v) in field_type_pairs if k in propertynames(df))
+    field_type_pairs = Dict((k, v) for (k,v) in field_type_pairs if k in propertynames(df))
 
     # Convert DataFrame columns to the correct types
     convert_df_columns!(df, field_type_pairs)
+
+    # Get an ordered list of fields that exist in both the structure and the DataFrame
+    fields = [f for f in fieldnames(structure) if f in propertynames(df) ]
     
     # Put columns of dataframe as vectors and create a tuple of these vectors.
-    cols = Tuple(df[!, field] for field in keys(field_type_pairs))
-    #Main.@Infiltrate
+    cols = Tuple(df[!, field] for field in fields)
+    
     # Create a vector of structures from the tuple of vectors
     V = structure.(cols...)    
 
@@ -59,6 +62,8 @@ function convert_df_columns!(df::DataFrame, col_type_pairs::Dict{Symbol, DataTyp
             df[!, col_name] = parse.(target_type, df[!, col_name])
         elseif target_type == String && eltype(df[!, col_name]) == Int64
             df[!, col_name] = string.(df[!, col_name])
+        elseif target_type == String && eltype(df[!, col_name]) == Float64
+            df[!, col_name] = string.(convert.(Int, df[!, col_name]))
         else
             df[!, col_name] = convert.(target_type, df[!, col_name])
         end
