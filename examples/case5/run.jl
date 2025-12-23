@@ -19,5 +19,7 @@ sys, mod = run_stocapex(;   main_dir = main_dir,
                             print_model = true,
                             gen_costs = "quadratic") 
 
+#sys = init_system(main_dir = main_dir)
+
 println("Finished")
 

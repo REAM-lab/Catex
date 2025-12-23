@@ -77,7 +77,7 @@ function load_data(inputs_dir::String)
     return G, cf
 end
 
-function stochastic_capex_model!(sys, mod:: Model, gen_costs:: String)
+function stochastic_capex_model!(sys, mod:: Model,  model_settings:: Dict)
 
     S = @views sys.S
     T = @views sys.T
@@ -111,6 +111,12 @@ function stochastic_capex_model!(sys, mod:: Model, gen_costs:: String)
             vCAPV[GV, S] ≥ 0    
             end)
 
+    if model_settings["consider_shedding"]
+        @variables(mod, begin
+                vSHED[N, S, T] ≥ 0       
+        end)
+    end        
+
     # Minimum capacity of generators
     @constraint(mod, cMinCapGenVar[g ∈ GV, s ∈ S], 
                     vCAPV[g, s] ≥ g.cap_existing_power_MW)
@@ -135,19 +141,20 @@ function stochastic_capex_model!(sys, mod:: Model, gen_costs:: String)
     # Power generation by bus
     @expression(mod, eGenAtBus[n ∈ N, s ∈ S, t ∈ T], 
                     sum(vGEN[g, t] for g ∈ GN_AT_BUS[n.id]) 
-                    + sum(vGENV[g, s, t] for g ∈ GV_AT_BUS[n.id]) )
+                    + sum(vGENV[g, s, t] for g ∈ GV_AT_BUS[n.id]) + (model_settings["consider_shedding"] ? vSHED[n, s, t] : 0) )
 
     
     # The weighted operational costs of running each generator
-    if gen_costs == "quadratic"
+    if model_settings["gen_costs"] == "quadratic"
     @expression(mod, eGenCostPerTp[t ∈ T],
                         sum(g.c2_USDperMWh2 * vGEN[g, t]* vGEN[g, t] + g.c1_USDperMWh * vGEN[g, t] + g.c0_USD for g ∈ GN) + 
                         1/length(S) * sum(s.probability * (g.c2_USDperMWh2 * vGENV[g, s, t]* vGENV[g, s, t] + g.c1_USDperMWh * vGENV[g, s, t] + g.c0_USD ) for g ∈ GV, s ∈ S))
 
-    elseif gen_costs == "linear"
+    elseif model_settings["gen_costs"] == "linear"
     @expression(mod, eGenCostPerTp[t ∈ T],
                         sum(g.cost_variable_USDperMWh * vGEN[g, t] for g ∈ GN) + 
-                        1/length(S) * sum(s.probability * g.cost_variable_USDperMWh * vGENV[g, s, t] for g ∈ GV, s ∈ S))
+                        1/length(S) * sum(s.probability * g.cost_variable_USDperMWh * vGENV[g, s, t] for g ∈ GV, s ∈ S) + 
+                        (model_settings["consider_shedding"] ? sum(5000 * vSHED[n, s, t] for n ∈ N, s ∈ S) : 0) )
     end
     
     eCostPerTp =  @views mod[:eCostPerTp]
@@ -181,6 +188,10 @@ function toCSV_stochastic_capex(sys, mod:: Model, outputs_dir:: String)
 
     # Print vCAPV variable solution
     to_df(mod[:vCAPV], [:generator, :scenario, :GenCapacity]; csv_dir = joinpath(outputs_dir,"var_gen_cap.csv"))
+
+    if haskey(mod, :vSHED)
+        to_df(mod[:vSHED], [:bus, :scenario, :timepoint, :LoadShedding_MW]; csv_dir = joinpath(outputs_dir,"load_shedding.csv"))
+    end
 
     # Print cost expressions
     filename = "gen_costs_itemized.csv"

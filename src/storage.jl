@@ -93,10 +93,10 @@ function stochastic_capex_model!(sys, mod:: Model)
     @constraint(mod, cMaxDischa[e ∈ E, s ∈ S, t ∈ T], 
                         vDISCHA[e, s, t] ≤ vPCAP[e, s])
     
-    Eids_fixduration = filter(e -> e.duration_hr > 0, E)
+    E_fixduration = filter(e -> e.duration_hr > 0, E)
 
-    if !isempty(Eids_fixduration)
-    @constraint(mod, cFixEnergyPowerRatio[e ∈ E[Eids_fixduration], s ∈ S], 
+    if !isempty(E_fixduration)
+    @constraint(mod, cFixEnergyPowerRatio[e ∈ E_fixduration, s ∈ S], 
                         vECAP[e, s] ==  e.duration_hr * vPCAP[e, s] )
     end
 

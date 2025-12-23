@@ -43,7 +43,7 @@ struct System
     T:: Vector{Timepoint}
     TS:: Vector{Timeseries}
     N:: Vector{Bus}
-    load:: Array{Union{Missing, Float64}}
+    load:: Vector{Load}
     G:: Vector{Generator}
     cf:: NamedArray{Union{Missing, Float64}}
     L:: Vector{Line}
@@ -71,7 +71,7 @@ end
 """
 Initialize the System struct by loading data from CSV files in the inputs directory.
 """
-function init_system(;main_dir = pwd())
+function init_system(main_dir::String)
 
     println("-------------------------") 
     println(" Catex  - version 0.1.0") 
@@ -103,16 +103,13 @@ end
 """
 Solves a stochastic capacity expansion problem.
 """ 
-function solve_stochastic_capex_model(sys ;main_dir = pwd(), 
-                                    solver = Mosek.Optimizer,
-                                    print_model = false,
-                                    gen_costs = "linear")
+function solve_stochastic_capex_model(sys, model_settings, main_dir, solver, solver_settings, print_model)
 
 
     println("> Building JuMP model:")
 
     # Create JuMP model
-    mod = Model(optimizer_with_attributes(solver))
+    mod = Model(optimizer_with_attributes(solver, solver_settings...))
 
     # Initialize Costs for a period
     @expression(mod, eCostPerPeriod, 0)
@@ -121,7 +118,7 @@ function solve_stochastic_capex_model(sys ;main_dir = pwd(),
     @expression(mod, eCostPerTp[t ∈ sys.T], 0)
 
     print(" > Generator vars and constraints ... ")
-    tep = @elapsed Generators.stochastic_capex_model!(sys, mod, gen_costs)
+    tep = @elapsed Generators.stochastic_capex_model!(sys, mod,  model_settings)
     println(" ok [$(round(tep, digits = 3)) seconds].")
 
     print(" > Storage vars and constraints ... ")
@@ -171,7 +168,7 @@ end
 """
 Exports results of the stochastic capacity expansion model to CSV files.
 """
-function print_stochastic_capex_results(sys, mod:: Model; main_dir = pwd()) 
+function print_stochastic_capex_results(sys, mod:: Model, main_dir) 
 
     # Define the outputs directory
     outputs_dir = joinpath(main_dir, "outputs")
@@ -195,12 +192,13 @@ end
 
 function run_stocapex(; main_dir = pwd(), 
                              solver = Mosek.Optimizer,
+                             solver_settings = Dict(),
                              print_model = false, 
-                             gen_costs = "linear")
+                             model_settings = Dict("gen_costs" => "linear", "consider_shedding" => false))
     
-    sys = init_system(main_dir = main_dir)
-    mod = solve_stochastic_capex_model(sys; main_dir = main_dir, solver = solver, print_model = print_model, gen_costs = gen_costs)
-    print_stochastic_capex_results(sys, mod; main_dir = main_dir)
+    sys = init_system(main_dir)
+    mod = solve_stochastic_capex_model(sys, model_settings, main_dir, solver, solver_settings, print_model)
+    print_stochastic_capex_results(sys, mod, main_dir)
 
     return sys, mod
 end

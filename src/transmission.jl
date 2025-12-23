@@ -10,7 +10,7 @@ using NamedArrays, JuMP, DataFrames, CSV
 using ..Utils
 
 # Export variables and functions
-export Bus, Line, load_data, stochastic_capex_model!
+export Bus, Line, Load, load_data, stochastic_capex_model!
 
 """
 Bus represents a bus or node in the power system.
@@ -112,14 +112,23 @@ function load_data(inputs_dir:: String, S, T)
 
     for l in load
         # Find ids of bus, scenario, and timepoint from load instance
-        l.bus_id = findfirst(n -> n.bus == l.bus, N)
-        l.scenario_id = findfirst(s -> s.scenario == l.scenario, S)
-        l.timepoint_id = findfirst(t -> t.timepoint == l.timepoint, T)
+        if !isnothing(findfirst(n -> n.bus == l.bus, N))
+            l.bus_id = findfirst(n -> n.bus == l.bus, N) 
+        end
+
+        if !isnothing(findfirst(s -> s.scenario == l.scenario, S))
+            l.scenario_id = findfirst(s -> s.scenario == l.scenario, S)
+        end
+        
+        
+        if !isnothing(findfirst(t -> t.timepoint == l.timepoint, T))
+            l.timepoint_id = findfirst(t -> t.timepoint == l.timepoint, T)
+        end
     end
 
     
     # Transform load data into a multidimensional NamedArray
-    load = to_multidim_array(load, [:bus_id, :scenario_id, :timepoint_id], :load_MW)
+    #load = to_multidim_array(load, [:bus_id, :scenario_id, :timepoint_id], :load_MW)
     println(" ok, loaded ", length(load), " load entries.")
 
     return N, L, load
@@ -172,18 +181,17 @@ function build_admittance_matrix(N:: Vector{Bus}, L:: Vector{Line}; include_shun
         y_branch = 1.0 / z_branch
         y_shunt = complex(line.g_pu, line.b_pu)
         
-        # Find ids of from_bus and to_bus from line instance
-        from_bus = findfirst(n -> n.bus == line.bus_from, N)
-        to_bus = findfirst(n -> n.bus == line.bus_to, N)
+        bus_id_from = line.bus_id_from
+        bus_id_to = line.bus_id_to
 
         # Off-diagonal elements. Y_ij = -y_ij
-        Y[from_bus, to_bus] -= y_branch
-        Y[to_bus, from_bus] -= y_branch
+        Y[bus_id_from, bus_id_to] -= y_branch
+        Y[bus_id_to, bus_id_from] -= y_branch
 
         # Diagonal elements. Note: Y_ii = y_1i + y2i + ... + yii + ...
         y_at_bus = y_branch + (include_shunts ? y_shunt : 0)
-        Y[from_bus, from_bus] += y_at_bus 
-        Y[to_bus, to_bus] += y_at_bus
+        Y[bus_id_from, bus_id_from] += y_at_bus 
+        Y[bus_id_to, bus_id_to] += y_at_bus
 
     end
 
@@ -234,7 +242,7 @@ function stochastic_capex_model!(sys, mod:: Model)
     slack_bus = N[slack_bus_id]
 
     # Define bus angle variables
-    @variable(mod, vTHETA[N, S, T]) 
+    @variable(mod, vTHETA[N, S, T])
 
     # Fix bus angle of slack bus
     fix.(vTHETA[slack_bus, S, T], 0)
@@ -255,11 +263,21 @@ function stochastic_capex_model!(sys, mod:: Model)
 
     @constraint(mod, cMinDiffAngle[l ∈ L, s ∈ S, t ∈ T; l.angle_min_deg>-360],
                             l.angle_min_deg * pi/180 ≤ (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) )
-    
+
+    function l_MW(n, s, t)
+        idx = findfirst(l -> l.bus_id == n.id && l.scenario_id == s.id && l.timepoint_id == t.id, load)
+        if !isnothing(idx)
+            return load[idx].load_MW
+        else
+            return 0.0
+        end
+    end
+
     # Power balance at each bus
     @constraint(mod, cGenBalance[n ∈ N, s ∈ S, t ∈ T], 
                     eGenAtBus[n, s, t] + eNetDischargeAtBus[n, s, t] ≥ 
-                    load[n.id, s.id, t.id] + eFlowAtBus[n, s, t])    
+                    l_MW(n, s, t) + eFlowAtBus[n, s, t])    
+
 
 end
 
@@ -283,7 +301,7 @@ function toCSV_stochastic_capex(sys, mod:: Model, outputs_dir:: String)
     rename!(df, [:rad => :bus_to_angle]) # rename col
 
     df.y_pu = 1 ./ (df.r_pu + 1im * df.x_pu) # compute branch admittance
-    df.pflow_MW = 100*(df.bus_from_angle - df.bus_to_angle) .* imag.(df.y_pu) # compute DC power flowing in the branch, assumes Sbase = 100 MVA
+    df.pflow_MW = -100*(df.bus_from_angle - df.bus_to_angle) .* imag.(df.y_pu) # compute DC power flowing in the branch, assumes Sbase = 100 MVA
     df.fict_loss_MW = df.r_pu .* abs.(df.pflow_MW) .* abs.(df.pflow_MW) # compute losses (not considered in the optimization)
     df.bus_from_angle = df.bus_from_angle * 180/pi # transform to deg
     df.bus_to_angle = df.bus_to_angle * 180/pi # transform to deg
