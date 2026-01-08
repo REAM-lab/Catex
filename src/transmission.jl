@@ -25,7 +25,7 @@ Bus represents a bus or node in the power system.
 """
 struct Bus
     id:: Int64
-    bus:: String
+    name:: String
     bus_type:: String
 end
 
@@ -65,23 +65,25 @@ Line is a π-model transmission line connecting two buses in the power system.
 """
 mutable struct Line
     id:: Int64
-    line:: String
-    bus_from:: String
-    bus_to:: String
-    rating_MVA:: Float64
+    name:: String
+    from_bus:: String
+    to_bus:: String
+    cap_existing_power_MW:: Float64
+    cost_fixed_power_USDperkW:: Float64
     r_pu:: Float64
     x_pu:: Float64
     g_pu:: Float64
     b_pu:: Float64
     angle_max_deg:: Float64
     angle_min_deg:: Float64
+    expand_capacity:: Bool
     bus_id_from:: Int64
     bus_id_to:: Int64
 end
 
 # Default values for Line
-function Line(id, line, bus_from, bus_to, rating_MVA, r_pu, x_pu, g_pu, b_pu, angle_max_deg, angle_min_deg; bus_id_from=0, bus_id_to=0)
-       return Line(id, line, bus_from, bus_to, rating_MVA, r_pu, x_pu, g_pu, b_pu, angle_max_deg, angle_min_deg, bus_id_from, bus_id_to)
+function Line(id, name, from_bus, to_bus, cap_existing_power_MW, cost_fixed_power_USDperkW, r_pu, x_pu, g_pu, b_pu, angle_max_deg, angle_min_deg, expand_capacity; bus_id_from=0, bus_id_to=0)
+       return Line(id, name, from_bus, to_bus, cap_existing_power_MW, cost_fixed_power_USDperkW, r_pu, x_pu, g_pu, b_pu, angle_max_deg, angle_min_deg, expand_capacity, bus_id_from, bus_id_to)
 end
 
 """
@@ -100,8 +102,8 @@ function load_data(inputs_dir:: String, S, T)
 
     for l in L
         # Find ids of from_bus and to_bus from line instance
-        l.bus_id_from = findfirst(n -> n.bus == l.bus_from, N)
-        l.bus_id_to = findfirst(n -> n.bus == l.bus_to, N)
+        l.bus_id_from = findfirst(n -> n.name == l.from_bus, N)
+        l.bus_id_to = findfirst(n -> n.name == l.to_bus, N)
     end
     println(" ok, loaded ", length(L), " lines.")
 
@@ -112,17 +114,17 @@ function load_data(inputs_dir:: String, S, T)
 
     for l in load
         # Find ids of bus, scenario, and timepoint from load instance
-        if !isnothing(findfirst(n -> n.bus == l.bus, N))
-            l.bus_id = findfirst(n -> n.bus == l.bus, N) 
+        if !isnothing(findfirst(n -> n.name == l.bus, N))
+            l.bus_id = findfirst(n -> n.name == l.bus, N) 
         end
 
-        if !isnothing(findfirst(s -> s.scenario == l.scenario, S))
-            l.scenario_id = findfirst(s -> s.scenario == l.scenario, S)
+        if !isnothing(findfirst(s -> s.name == l.scenario, S))
+            l.scenario_id = findfirst(s -> s.name == l.scenario, S)
         end
         
         
-        if !isnothing(findfirst(t -> t.timepoint == l.timepoint, T))
-            l.timepoint_id = findfirst(t -> t.timepoint == l.timepoint, T)
+        if !isnothing(findfirst(t -> t.name == l.timepoint, T))
+            l.timepoint_id = findfirst(t -> t.name == l.timepoint, T)
         end
     end
 
@@ -235,7 +237,6 @@ function stochastic_capex_model!(sys, mod:: Model)
     # Build admittance matrix and maxFlow
     Y = build_admittance_matrix(N, L)
     B = imag(Y) # take susceptance matrix
-    maxFlow = get_maxFlow(N, L)
 
     # Get slack bus
     slack_bus_id = findfirst(n -> n.bus_type == "slack", N)
@@ -243,6 +244,7 @@ function stochastic_capex_model!(sys, mod:: Model)
 
     # Define bus angle variables
     @variable(mod, vTHETA[N, S, T])
+    @variable(mod, vCAPL[L] ≥ 0)
 
     # Fix bus angle of slack bus
     fix.(vTHETA[slack_bus, S, T], 0)
@@ -252,14 +254,25 @@ function stochastic_capex_model!(sys, mod:: Model)
     eNetDischargeAtBus = mod[:eNetDischargeAtBus]
     
     # DC Power flow transfered from each bus, assumes sbase = 100 MVA for all lines
+    N_at_bus = Dict(n.id => [N[k] for k in N if ( (B[n.id, k.id] != 0) && (n.id != k.id))] for n in N) # dictionary to access bus neighors
+
     @expression(mod, eFlowAtBus[n ∈ N, s ∈ S, t ∈ T], 
-                    100 * sum(B[n.id, m.id] * (vTHETA[n, s, t] - vTHETA[m, s, t]) for m in N))
+                    100 * sum(B[n.id, m.id] * (vTHETA[n, s, t] - vTHETA[m, s, t]) for m in N_at_bus[n.id]))
 
-    @constraint(mod, cMaxFlowPerLine[l ∈ L, s ∈ S, t ∈ T; l.rating_MVA>0],
-                -l.rating_MVA ≤ 100 * l.x_pu/(l.x_pu^2 + l.r_pu^2) *  (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) ≤ +l.rating_MVA)
+    for l in L
+        if l.expand_capacity == false
+            fix(vCAPL[l], 0.0; force=true)
+        end
+    end
 
-    @constraint(mod, cMaxDiffAngle[l ∈ L, s ∈ S, t ∈ T; l.angle_max_deg<360],
-                            (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t])  ≤ l.angle_max_deg * pi/180)
+    @constraint(mod, cMaxFlowPerLine[l ∈ L, s ∈ S, t ∈ T; (l.cap_existing_power_MW>0) || (l.expand_capacity==true)],
+                100 * l.x_pu/(l.x_pu^2 + l.r_pu^2) *  (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) ≤ +l.cap_existing_power_MW + vCAPL[l] )
+
+    @constraint(mod, cMinFlowPerLine[l ∈ L, s ∈ S, t ∈ T; (l.cap_existing_power_MW>0) || (l.expand_capacity==true)],
+            -100 * l.x_pu/(l.x_pu^2 + l.r_pu^2) *  (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) >= -(l.cap_existing_power_MW + vCAPL[l]) )
+
+    @constraint(mod, cMaxDiffAngle[l ∈ L, s ∈ S, t ∈ T; (l.angle_max_deg<360)],
+                           (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t])  ≤ l.angle_max_deg * pi/180)
 
     @constraint(mod, cMinDiffAngle[l ∈ L, s ∈ S, t ∈ T; l.angle_min_deg>-360],
                             l.angle_min_deg * pi/180 ≤ (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) )
@@ -275,8 +288,7 @@ function stochastic_capex_model!(sys, mod:: Model)
 
     # Power balance at each bus
     @constraint(mod, cGenBalance[n ∈ N, s ∈ S, t ∈ T], 
-                    eGenAtBus[n, s, t] + eNetDischargeAtBus[n, s, t] ≥ 
-                    l_MW(n, s, t) + eFlowAtBus[n, s, t])    
+                    eGenAtBus[n, s, t] + eNetDischargeAtBus[n, s, t] ==  l_MW(n, s, t) + eFlowAtBus[n, s, t])    
 
 
 end
@@ -287,8 +299,11 @@ function toCSV_stochastic_capex(sys, mod:: Model, outputs_dir:: String)
     L = @views sys.L 
     lines_df = DataFrame(L) #as dataframe
 
+    # Export line capacities
+    to_df(mod[:vCAPL], [:line, :capacity_MW]; struct_fields=[:name], csv_dir = joinpath(outputs_dir,"line_built_capacity.csv"))
+
     # Dataframe of bus angle. Columns: bus, scenario, timepoint, rad
-    angle_df = to_df(mod[:vTHETA], [:bus, :scenario, :timepoint, :rad])
+    angle_df = to_df(mod[:vTHETA], [:bus, :scenario, :timepoint, :rad]; struct_fields=[:name, :name, :name])
 
     # Join
     df = rightjoin(lines_df, angle_df, on=[:bus_from => :bus])
@@ -307,7 +322,7 @@ function toCSV_stochastic_capex(sys, mod:: Model, outputs_dir:: String)
     df.bus_to_angle = df.bus_to_angle * 180/pi # transform to deg
     select!(df, Not(:y_pu, :r_pu, :x_pu, :g_pu, :b_pu))
     
-    filename = "transmission_flows.csv"
+    filename = "line_flows.csv"
     println(" > $filename printed.")
     CSV.write(joinpath(outputs_dir, filename), df)
 end

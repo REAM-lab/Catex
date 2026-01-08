@@ -26,9 +26,9 @@ Generator represents a generation project or existing generator in the power sys
 - cap_limit: maximum build capacity of the generator (MW)
 - var_om_cost: variable operation and maintenance cost (USD/MW)
 """
-struct Generator
+mutable struct Generator
     id:: Int64
-    generator:: String
+    name:: String
     technology:: String
     bus:: String
     site:: String
@@ -39,6 +39,11 @@ struct Generator
     c0_USD:: Float64
     c1_USDperMWh:: Float64
     c2_USDperMWh2:: Float64
+    expand_capacity:: Bool
+end
+
+function Generator(id, generator, technology, bus, site, cap_existing_power_MW, cap_max_power_MW, cost_fixed_power_USDperkW, cost_variable_USDperMWh, c0_USD, c1_USDperMWh, c2_USDperMWh2; expand_capacity = true)
+    return Generator(id, generator, technology, bus, site, cap_existing_power_MW, cap_max_power_MW, cost_fixed_power_USDperkW, cost_variable_USDperMWh, c0_USD, c1_USDperMWh, c2_USDperMWh2, expand_capacity)
 end
 
 """
@@ -74,6 +79,13 @@ function load_data(inputs_dir::String)
     cf = to_multidim_array(cf, [:site, :scenario, :timepoint], :capacity_factor; asNamedArray=true)
     println(" ok, loaded ", length(cf), " capacity factor entries.")
 
+    # Extra calculations or checks can be added here
+    for g in G
+        if g.cap_existing_power_MW >= g.cap_max_power_MW
+            g.expand_capacity = false
+        end
+    end
+
     return G, cf
 end
 
@@ -99,7 +111,7 @@ function stochastic_capex_model!(sys, mod:: Model,  model_settings:: Dict)
     """
     GN = setdiff( G, GV )
 
-    G_AT_BUS = [filter(g -> g.bus == n.bus, G) for n in N]
+    G_AT_BUS = [filter(g -> g.bus == n.name, G) for n in N]
     GV_AT_BUS= intersect.(G_AT_BUS, fill(GV, length(N)))  
     GN_AT_BUS = intersect.(G_AT_BUS, fill(GN, length(N)))    
     
@@ -117,26 +129,33 @@ function stochastic_capex_model!(sys, mod:: Model,  model_settings:: Dict)
         end)
     end        
 
-    # Minimum capacity of generators
-    @constraint(mod, cMinCapGenVar[g ∈ GV, s ∈ S], 
-                    vCAPV[g, s] ≥ g.cap_existing_power_MW)
+    for g in GN
+        if !g.expand_capacity
+            fix(vCAP[g], 0; force=true)
+        end
+    end
 
-    @constraint(mod, cMinCapGenNonVar[g ∈ GN], 
-                    vCAP[g] ≥ g.cap_existing_power_MW)
+    for g in GV
+        if !g.expand_capacity
+            for s in S
+                fix(vCAPV[g, s], 0; force=true)
+            end
+        end
+    end
 
     # Maximum build capacity 
-    @constraint(mod, cMaxCapNonVar[g ∈ GN], 
-                    vCAP[g] ≤ g.cap_max_power_MW)
+    @constraint(mod, cMaxCapNonVar[g ∈ GN; g.expand_capacity == true], 
+                    vCAP[g] ≤ g.cap_max_power_MW - g.cap_existing_power_MW)
 
-    @constraint(mod, cMaxCapVar[g ∈ GV, s ∈ S], 
-                    vCAPV[g, s] ≤ g.cap_max_power_MW)
+    @constraint(mod, cMaxCapVar[g ∈ GV, s ∈ S; g.expand_capacity == true], 
+                    vCAPV[g, s] ≤ g.cap_max_power_MW - g.cap_existing_power_MW)
     
     # Maximum power generation
     @constraint(mod, cMaxGenNonVar[g ∈ GN, t ∈ T], 
-                    vGEN[g, t] ≤ vCAP[g])
+                    vGEN[g, t] ≤ vCAP[g] + g.cap_existing_power_MW)
 
     @constraint(mod, cMaxGenVar[g ∈ GV, s ∈ S, t ∈ T], 
-                    vGENV[g, s, t] ≤ cf[g.site, s.scenario, t.timepoint]*vCAPV[g, s])
+                    vGENV[g, s, t] ≤ cf[g.site, s.name, t.name] * (vCAPV[g, s] + g.cap_existing_power_MW))
 
     # Power generation by bus
     @expression(mod, eGenAtBus[n ∈ N, s ∈ S, t ∈ T], 
@@ -178,24 +197,24 @@ end
 function toCSV_stochastic_capex(sys, mod:: Model, outputs_dir:: String)
     
     # Print vGEN variable solution
-    to_df(mod[:vGEN], [:generator, :timepoint, :DispatchGen_MW]; csv_dir = joinpath(outputs_dir,"gen_dispatch.csv"))
+    to_df(mod[:vGEN], [:generator, :timepoint, :DispatchGen_MW]; csv_dir = joinpath(outputs_dir,"generator_dispatch.csv"), struct_fields=[:name, :name])
     
     # Print vCAP variable solution
-    to_df(mod[:vCAP], [:generator, :GenCapacity]; csv_dir = joinpath(outputs_dir,"gen_cap.csv"))
+    to_df(mod[:vCAP], [:generator, :GenCapacity]; csv_dir = joinpath(outputs_dir,"generator_capacity.csv"), struct_fields=[:name])
 
     # Print vGENV variable solution
-    to_df(mod[:vGENV], [:generator, :scenario, :timepoint, :DispatchGen_MW]; csv_dir = joinpath(outputs_dir,"var_gen_dispatch.csv"))
+    to_df(mod[:vGENV], [:generator, :scenario, :timepoint, :DispatchGen_MW]; csv_dir = joinpath(outputs_dir,"variable_generator_dispatch.csv"), struct_fields=[:name, :name, :name])
 
     # Print vCAPV variable solution
-    to_df(mod[:vCAPV], [:generator, :scenario, :GenCapacity]; csv_dir = joinpath(outputs_dir,"var_gen_cap.csv"))
+    to_df(mod[:vCAPV], [:generator, :scenario, :GenCapacity]; csv_dir = joinpath(outputs_dir,"variable_generator_capacity.csv"), struct_fields=[:name, :name, :name])
 
     if haskey(mod, :vSHED)
-        to_df(mod[:vSHED], [:bus, :scenario, :timepoint, :LoadShedding_MW]; csv_dir = joinpath(outputs_dir,"load_shedding.csv"))
+        to_df(mod[:vSHED], [:bus, :scenario, :timepoint, :LoadShedding_MW]; csv_dir = joinpath(outputs_dir,"load_shedding.csv"), struct_fields=[:name, :name, :name])
     end
 
     # Print cost expressions
     filename = "gen_costs_itemized.csv"
-    costs =  DataFrame(component  = ["CostPerTimepoint", "CostPerPeriod", "TotalCost"], 
+    costs =  DataFrame(component  = ["CostPerTimepoint_USD", "CostPerPeriod_USD", "TotalCost_USD"], 
                             cost  = [   value(sum(t.weight * mod[:eGenCostPerTp][t] for t in sys.T)), 
                                         value(mod[:eGenCostPerPeriod]), 
                                         value(mod[:eGenTotalCost])]) 

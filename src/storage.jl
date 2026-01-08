@@ -23,9 +23,9 @@ Storage unit represents an energy storage system in the power system.
 - efficiency: round-trip efficiency of the storage system (between 0 and 1)
 - duration: duration of the storage system at full power (hours)
 """
-struct StorageUnit
+mutable struct StorageUnit
     id:: Int64
-    storage:: String
+    name:: String
     technology:: String
     bus:: String
     cap_existing_energy_MWh:: Float64
@@ -40,6 +40,12 @@ struct StorageUnit
     c0_USD:: Float64
     c1_USDperMWh:: Float64
     c2_USDperMWh2:: Float64
+    expand_capacity:: Bool
+end
+
+function StorageUnit(id, storage, technology, bus, cap_existing_energy_MWh, cap_existing_power_MW, cap_max_power_MW, cost_fixed_energy_USDperkWh, cost_fixed_power_USDperkW, cost_variable_USDperMWh, duration_hr, efficiency_charge, efficiency_discharge, c0_USD, c1_USDperMWh, c2_USDperMWh2; expand_capacity = true)
+    return StorageUnit(id, storage, technology, bus, cap_existing_energy_MWh, cap_existing_power_MW, cap_max_power_MW, cost_fixed_energy_USDperkWh, cost_fixed_power_USDperkW, cost_variable_USDperMWh, duration_hr, efficiency_charge, efficiency_discharge, c0_USD, c1_USDperMWh, c2_USDperMWh2, expand_capacity)
+    
 end
 
 function load_data(inputs_dir::String)
@@ -49,6 +55,13 @@ function load_data(inputs_dir::String)
     print(" > $filename ...")
     E = to_structs(StorageUnit, joinpath(inputs_dir, filename))
     println(" ok, loaded ", length(E), " storage units.")
+
+    # Extra calculations or checks can be added here
+    for e in E
+        if e.cap_existing_power_MW >= e.cap_max_power_MW
+            e.expand_capacity = false
+        end
+    end
 
     return E
 end
@@ -77,31 +90,34 @@ function stochastic_capex_model!(sys, mod:: Model)
             vECAP[E, S] ≥ 0  
     end)
 
-    @constraint(mod, cMinEnerCapStor[e ∈ E, s ∈ S],     
-                        vECAP[e, s] ≥ e.cap_existing_energy_MWh)
-    
-    @constraint(mod, cMinPowerCapStor[e ∈ E, s ∈ S], 
-                        vPCAP[e, s] ≥ e.cap_existing_power_MW)
+    for e in E
+        if e.expand_capacity == false
+            for s in S
+                fix(vPCAP[e, s], 0.0; force=true)
+                fix(vECAP[e, s], 0.0; force=true)
+            end
+        end
+    end
 
-    @constraint(mod, cMaxPowerCapStor[e ∈ E, s ∈ S], 
-                        vPCAP[e, s] ≤ e.cap_max_power_MW)
+    @constraint(mod, cMaxPowerCapStor[e ∈ E, s ∈ S; e.expand_capacity == true], 
+                        vPCAP[e, s] ≤ e.cap_max_power_MW - e.cap_existing_power_MW)
 
     # Define constraints for energy storage systems
-    @constraint(mod, cMaxCharge[e ∈ E, s ∈ S, t ∈ T], 
-                        vCHARGE[e, s, t] ≤ vPCAP[e, s])
+    @constraint(mod, cMaxCharge[e ∈ E, s ∈ S, t ∈ T; e.expand_capacity == true], 
+                        vCHARGE[e, s, t] ≤ vPCAP[e, s] + e.cap_existing_power_MW)
     
-    @constraint(mod, cMaxDischa[e ∈ E, s ∈ S, t ∈ T], 
-                        vDISCHA[e, s, t] ≤ vPCAP[e, s])
+    @constraint(mod, cMaxDischa[e ∈ E, s ∈ S, t ∈ T; e.expand_capacity == true], 
+                        vDISCHA[e, s, t] ≤ vPCAP[e, s] + e.cap_existing_power_MW)
     
-    E_fixduration = filter(e -> e.duration_hr > 0, E)
+    E_fixduration_expandable = filter(e -> ((e.duration_hr > 0)  && (e.expand_capacity == true)), E)
 
-    if !isempty(E_fixduration)
-    @constraint(mod, cFixEnergyPowerRatio[e ∈ E_fixduration, s ∈ S], 
-                        vECAP[e, s] ==  e.duration_hr * vPCAP[e, s] )
+    if !isempty(E_fixduration_expandable)
+    @constraint(mod, cFixEnergyPowerRatio[e ∈ E_fixduration_expandable, s ∈ S], 
+                        (vECAP[e, s] + e.cap_existing_energy_MWh) ==  e.duration_hr * (vPCAP[e, s] + e.cap_existing_power_MW) )
     end
 
     @constraint(mod, cMaxSOC[e ∈ E, s ∈ S, t ∈ T], 
-                        vSOC[e, s, t] ≤ vECAP[e, s])
+                        vSOC[e, s, t] ≤ (vECAP[e, s] + e.cap_existing_energy_MWh))
 
     # SOC in the next time is a function of SOC in the previous time
     # with circular wrapping for the first and last timepoints within a timeseries

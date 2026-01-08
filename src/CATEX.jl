@@ -78,6 +78,8 @@ function init_system(main_dir::String)
     println("-------------------------") 
 
     # Define the inputs directory
+    full_start_time = time() 
+
     inputs_dir = joinpath(main_dir, "inputs")
 
     println("> Loading system data from $inputs_dir :")
@@ -97,6 +99,9 @@ function init_system(main_dir::String)
     # Create instance of System struct
     sys = System(S, T, TS, N, load, G, cf, L, E, policies)
 
+    total_time = round(time() - full_start_time; digits=2)
+    println("> Total: $total_time seconds.\n")
+
     return sys
 end
 
@@ -107,7 +112,7 @@ function solve_stochastic_capex_model(sys, model_settings, main_dir, solver, sol
 
 
     println("> Building JuMP model:")
-
+    full_start_time = time() 
     # Create JuMP model
     mod = Model(optimizer_with_attributes(solver, solver_settings...))
 
@@ -150,6 +155,8 @@ function solve_stochastic_capex_model(sys, model_settings, main_dir, solver, sol
             println(f, mod)
         end
     end
+    total_time = round(time() - full_start_time; digits=2)
+    println("> Total: $total_time seconds.")
 
     println("> JuMP model completed. Starting optimization: ")
                     

@@ -20,7 +20,7 @@ Scenario represents a scenario in the stochastic capacity expansion problem.
 """
 struct Scenario
     id:: Int64
-    scenario:: String
+    name:: String
     probability:: Float64
 end
 

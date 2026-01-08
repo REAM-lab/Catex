@@ -22,7 +22,7 @@ stochastic capacity expansion problem.
 """
 mutable struct Timepoint
     id:: Int64
-    timepoint:: String
+    name:: String
     timeseries:: String
     timeseries_id:: Int64 
     weight:: Float64
@@ -31,13 +31,13 @@ mutable struct Timepoint
 end 
 
 # Default values for Timepoint
-function Timepoint(id, timepoint, timeseries; timeseries_id=0, weight=0, duration_hr=0, prev_timepoint_id=0)
-       return Timepoint(id, timepoint, timeseries, timeseries_id, weight, duration_hr, prev_timepoint_id)
+function Timepoint(id, name, timeseries; timeseries_id=0, weight=0, duration_hr=0, prev_timepoint_id=0)
+       return Timepoint(id, name, timeseries, timeseries_id, weight, duration_hr, prev_timepoint_id)
 end
 
 mutable struct Timeseries
     id:: Int64
-    timeseries:: String
+    name:: String
     timepoint_duration_hr:: Float64
     number_of_timepoints:: Int64
     timeseries_scale_to_period:: Float64
@@ -45,8 +45,8 @@ mutable struct Timeseries
 end 
 
 # Default values for Timeseries
-function Timeseries(id, timeseries, timepoint_duration_hr, number_of_timepoints, timeseries_scale_to_period; timepoints_ids = Vector{Int64}())
-       return Timeseries(id, timeseries, timepoint_duration_hr, number_of_timepoints, timeseries_scale_to_period, timepoints_ids)
+function Timeseries(id, name, timepoint_duration_hr, number_of_timepoints, timeseries_scale_to_period; timepoints_ids = Vector{Int64}())
+       return Timeseries(id, name, timepoint_duration_hr, number_of_timepoints, timeseries_scale_to_period, timepoints_ids)
 end
 
 function load_data(inputs_dir:: String)
@@ -64,7 +64,7 @@ function load_data(inputs_dir:: String)
     print(" > Timescale calculations ...")
     for t in T
         # Timeseries id for each timepoint
-        t.timeseries_id = findfirst(x -> x.timeseries == t.timeseries, TS)
+        t.timeseries_id = findfirst(x -> x.name == t.timeseries, TS)
 
         # Duration (hrs) for each timepoint
         t.duration_hr = (TS[t.timeseries_id]).timepoint_duration_hr 
