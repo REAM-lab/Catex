@@ -124,13 +124,7 @@ function stochastic_capex_model!(sys, mod:: Model,  model_settings:: Dict)
             vGENV[GV, S, T] ≥ 0
             vCAPV[GV, S] ≥ 0    
             end)
-
-    if model_settings["consider_shedding"]
-        @variables(mod, begin
-                vSHED[N, S, T] ≥ 0       
-        end)
-    end        
-
+    
     for g in GN
         if !g.expand_capacity
             fix(vCAP[g], 0; force=true)
@@ -146,6 +140,7 @@ function stochastic_capex_model!(sys, mod:: Model,  model_settings:: Dict)
     end
 
     # Maximum build capacity 
+    println(" - Maximum built capacity constraints") 
     @constraint(mod, cMaxCapNonVar[g ∈ GN; g.expand_capacity == true], 
                     vCAP[g] ≤ g.cap_max_power_MW - g.cap_existing_power_MW)
 
@@ -153,47 +148,40 @@ function stochastic_capex_model!(sys, mod:: Model,  model_settings:: Dict)
                     vCAPV[g, s] ≤ g.cap_max_power_MW - g.cap_existing_power_MW)
     
     # Maximum power generation
+    println(" - Maximum dispatch constraints")    
     @constraint(mod, cMaxGenNonVar[g ∈ GN, t ∈ T], 
                     vGEN[g, t] ≤ vCAP[g] + g.cap_existing_power_MW)
 
+    println(" - Capacity factor constraints")
     @constraint(mod, cMaxGenVar[g ∈ GV, s ∈ S, t ∈ T], 
                     vGENV[g, s, t] ≤ cf[g.site, s.name, t.name] * (vCAPV[g, s] + g.cap_existing_power_MW))
 
     # Power generation by bus
+    println(" - Dispatch at bus expressions")
     @expression(mod, eGenAtBus[n ∈ N, s ∈ S, t ∈ T], 
                     sum(vGEN[g, t] for g ∈ GN_AT_BUS[n.id]) 
-                    + sum(vGENV[g, s, t] for g ∈ GV_AT_BUS[n.id]) + (model_settings["consider_shedding"] ? vSHED[n, s, t] : 0) )
+                    + sum(vGENV[g, s, t] for g ∈ GV_AT_BUS[n.id]))
 
     
     # The weighted operational costs of running each generator
-    if model_settings["gen_costs"] == "quadratic"
+    if model_settings["generator_type_costs"] == "quadratic"
     @expression(mod, eGenCostPerTp[t ∈ T],
                         sum(g.c2_USDperMWh2 * vGEN[g, t]* vGEN[g, t] + g.c1_USDperMWh * vGEN[g, t] + g.c0_USD for g ∈ GN) + 
                         1/length(S) * sum(s.probability * (g.c2_USDperMWh2 * vGENV[g, s, t]* vGENV[g, s, t] + g.c1_USDperMWh * vGENV[g, s, t] + g.c0_USD ) for g ∈ GV, s ∈ S))
 
-    elseif model_settings["gen_costs"] == "linear"
+    elseif model_settings["generator_type_costs"] == "linear"
     @expression(mod, eGenCostPerTp[t ∈ T],
                         sum(g.cost_variable_USDperMWh * vGEN[g, t] for g ∈ GN) + 
                         1/length(S) * sum(s.probability * g.cost_variable_USDperMWh * vGENV[g, s, t] for g ∈ GV, s ∈ S))
     end
     
-    if model_settings["consider_shedding"] == true
-        @expression(mod, eShedCostPerTp[t ∈ T],
-                            1/length(S) * sum(s.probability * 5000 * vSHED[n, s, t] for n ∈ N, s ∈ S)) 
-        @expression(mod, eShedTotalCost,
-                                sum(eShedCostPerTp[t] * t.weight for t ∈ T))
-
-        eCostPerTp =  @views mod[:eCostPerTp]
-        unregister(mod, :eCostPerTp)
-        @expression(mod, eCostPerTp[t ∈ T], eCostPerTp[t] + eShedCostPerTp[t])
-
-    end
         
     eCostPerTp =  @views mod[:eCostPerTp]
     unregister(mod, :eCostPerTp)
     @expression(mod, eCostPerTp[t ∈ T], eCostPerTp[t] + eGenCostPerTp[t])
 
     # Fixed costs 
+    println(" - Generation cost per period expression")
     @expression(mod, eGenCostPerPeriod,
                     sum(g.cost_fixed_power_USDperkW * vCAP[g] * 1000 for g ∈ GN) 
                     + 1/length(S) * sum( (s.probability * g.cost_fixed_power_USDperkW * vCAPV[g, s] * 1000) for g ∈ GV, s ∈ S ))
@@ -221,14 +209,6 @@ function toCSV_stochastic_capex(sys, mod:: Model, outputs_dir:: String)
     # Print vCAPV variable solution
     to_df(mod[:vCAPV], [:generator, :scenario, :GenCapacity]; csv_dir = joinpath(outputs_dir,"variable_generator_capacity.csv"), struct_fields=[:name, :name, :name])
 
-    # Print shedding if applicable
-    if haskey(mod, :vSHED)
-        to_df(mod[:vSHED], [:bus, :scenario, :timepoint, :load_shedding_MW]; csv_dir = joinpath(outputs_dir,"load_shedding.csv"), struct_fields=[:name, :name, :name])
-    
-        costs = DataFrame(component  = ["TotalCost_USD"],
-                              cost  =  [value(mod[:eShedTotalCost])])
-        CSV.write(joinpath(outputs_dir, "load_shedding_costs_summary.csv"), costs)
-    end
 
     # Print cost expressions
     filename = "generator_costs_summary.csv"

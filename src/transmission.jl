@@ -280,6 +280,18 @@ function stochastic_capex_model!(sys, mod:: Model, model_settings:: Dict)
     # Fix bus angle of slack bus
     fix.(vTHETA[slack_bus, S, T], 0)
 
+    println(" - Load data lookup")
+    load_lookup = {(ld.bus, ld.scenario, ld.timepoint) => ld.load_MW for ld in load}
+    load_buses = [ld.bus for ld in load if abs(ld.load_MW) != 0]
+    N_load = [n for n in N if n.name in load_buses]
+
+    if model_settings["load_shedding"] == true
+        println(" - Load shedding variables")
+        @variables(mod, begin
+                vSHED[N_load, S, T] ≥ 0       
+        end)
+    end    
+
     # Extracting expressions from other submodules
     eGenAtBus = mod[:eGenAtBus]
     eNetDischargeAtBus = mod[:eNetDischargeAtBus]
@@ -290,22 +302,27 @@ function stochastic_capex_model!(sys, mod:: Model, model_settings:: Dict)
     @expression(mod, eFlowAtBus[n ∈ N, s ∈ S, t ∈ T], 
                     100 * sum(B[n.id, m.id] * (vTHETA[n, s, t] - vTHETA[m, s, t]) for m in N_at_bus[n.id]))
 
-    if model_settings["consider_line_capacity"] == true
+    if model_settings["line_capacity_expansion"] == true
 
+        println(" - Set of expandable and non-expandable lines")
         L_expandable = [l for l in L if ((l.expand_capacity == true) && (l.cap_existing_power_MW !== nothing))]
         L_nonexpandable = [l for l in L if ((l.expand_capacity == false) && (l.cap_existing_power_MW !== nothing))]
 
+        println(" - Decision variables of line capacity expansion")
         @variable(mod, vCAPL[L_expandable] ≥ 0)
 
+        println(" - Maximum and minimum flow constraints per expandable line")
         @constraint(mod, cMaxFlowPerLine[l ∈ L_expandable, s ∈ S, t ∈ T],
                 100 * l.x_pu/(l.x_pu^2 + l.r_pu^2) *  (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) ≤ +l.cap_existing_power_MW + vCAPL[l] )
 
         @constraint(mod, cMinFlowPerLine[l ∈ L_expandable, s ∈ S, t ∈ T],
             100 * l.x_pu/(l.x_pu^2 + l.r_pu^2) *  (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) >= -(l.cap_existing_power_MW + vCAPL[l]) )
 
+        println(" - Maximum flow constraints per non-expandable line")
         @constraint(mod, cFlowPerNonExpLine[l ∈ L_nonexpandable, s ∈ S, t ∈ T],
             -l.cap_existing_power_MW ≤ 100 * l.x_pu/(l.x_pu^2 + l.r_pu^2) *  (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) ≤ +l.cap_existing_power_MW )
 
+        println(" - Line cost per period expression")
         @expression(mod, eLineCostPerPeriod,
                      sum(l.cost_fixed_power_USDperkW * vCAPL[l] * 1000 for l in L_expandable))
         
@@ -315,34 +332,47 @@ function stochastic_capex_model!(sys, mod:: Model, model_settings:: Dict)
 
     end
 
-    if model_settings["consider_bus_max_flow"] == true
+    if (model_settings["line_capacity"] == true) && (model_settings["line_capacity_expansion"] == false)
+        println(" - Maximum and minimum flow constraints per line")
+        L_cap_constrained = [l for l in L if l.cap_existing_power_MW !== nothing]
+        @constraint(mod, cFlowPerNonExpLine[l ∈ L_cap_constrained, s ∈ S, t ∈ T],
+                           - l.cap_existing_power_MW ≤ 100 * l.x_pu/(l.x_pu^2 + l.r_pu^2) *  (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t]) ≤ + l.cap_existing_power_MW )
+
+    end
+
+    if model_settings["bus_max_flow"] == true
 
         buses_with_max_flow = [n for n in N if (n.max_flow_MW  !== nothing) ]
-
         @constraint(mod, cFlowPerBus[n ∈ buses_with_max_flow, s ∈ S, t ∈ T],
                            - n.max_flow_MW ≤ eFlowAtBus[n, s, t] ≤ n.max_flow_MW)
     end
 
-    if model_settings["consider_angle_limits"] == true
+    if model_settings["angle_difference_limits"] == true
+
         lines_with_angle_limits = [l for l in L if ((l.angle_min_deg > -360) && (l.angle_max_deg < 360))]
-       
         @constraint(mod, cDiffAngle[l ∈ lines_with_angle_limits, s ∈ S, t ∈ T],
                            l.angle_min_deg * pi/180 ≤ (vTHETA[N[l.bus_id_from], s, t] - vTHETA[N[l.bus_id_to], s, t])  ≤ l.angle_max_deg * pi/180)
     end
 
-    function l_MW(n, s, t)
-        idx = findfirst(l -> l.bus_id == n.id && l.scenario_id == s.id && l.timepoint_id == t.id, load)
-        if !isnothing(idx)
-            return load[idx].load_MW
-        else
-            return 0.0
-        end
-    end
-
     # Power balance at each bus
-    @constraint(mod, cGenBalance[n ∈ N, s ∈ S, t ∈ T], 
-                    eGenAtBus[n, s, t] + eNetDischargeAtBus[n, s, t] ==  l_MW(n, s, t) + eFlowAtBus[n, s, t])    
+    @constraint(mod, cEnergyBalance[n ∈ N, s ∈ S, t ∈ T], 
+                    (eGenAtBus[n, s, t]
+                    + eNetDischargeAtBus[n, s, t] 
+                    + ( ((model_settings["load_shedding"]) && (n.name in load_buses)) ? vSHED[n, s, t] : 0 )) * t.weight == 
+                     (get(load_lookup, (n.name, s.name, t.name), 0.0) + eFlowAtBus[n, s, t]) * t.weight )
 
+    if model_settings["load_shedding"] == true
+        # Total load shedding cost expression
+        println(" - Load shedding cost expressions")
+        @expression(mod, eShedCostPerTp[t ∈ T],
+                            1/length(S) * sum(s.probability * 5000 * vSHED[n, s, t] for n ∈ N_load, s ∈ S)) 
+        @expression(mod, eShedTotalCost,
+                                sum(eShedCostPerTp[t] * t.weight for t ∈ T))
+
+        eCostPerTp =  @views mod[:eCostPerTp]
+        unregister(mod, :eCostPerTp)
+        @expression(mod, eCostPerTp[t ∈ T], eCostPerTp[t] + eShedCostPerTp[t])
+    end
 
 end
 
@@ -359,6 +389,15 @@ function toCSV_stochastic_capex(sys, mod:: Model, outputs_dir:: String)
         costs = DataFrame( component = ["CostPerPeriod_USD"],
                                 cost = [ value(mod[:eLineCostPerPeriod]) ])
         CSV.write(joinpath(outputs_dir, "line_costs_summary.csv"), costs)
+    end
+
+    # Print shedding if applicable
+    if haskey(mod, :vSHED)
+        to_df(mod[:vSHED], [:bus, :scenario, :timepoint, :load_shedding_MW]; csv_dir = joinpath(outputs_dir,"load_shedding.csv"), struct_fields=[:name, :name, :name])
+    
+        costs = DataFrame(component  = ["TotalCost_USD"],
+                              cost  =  [value(mod[:eShedTotalCost])])
+        CSV.write(joinpath(outputs_dir, "load_shedding_costs_summary.csv"), costs)
     end
 
     # Dataframe of bus angle. Columns: bus, scenario, timepoint, rad

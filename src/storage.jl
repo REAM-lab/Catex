@@ -103,12 +103,13 @@ function stochastic_capex_model!(sys, mod:: Model, model_settings::Dict)
         end
     end
 
+    println(" - Constraints of power capacity expansion")
     @constraint(mod, cMaxPowerCapStor[e ∈ E, s ∈ S; e.expand_capacity == true], 
                         vPCAP[e, s] ≤ e.cap_max_power_MW - e.cap_existing_power_MW)
 
 
-    
-    if model_settings["consider_single_storage_injection"] == true
+    println(" - Maximum charge and discharge constraints")
+    if model_settings["single_storage_injection"] == true
         @constraint(mod, cMaxCharge[e ∈ E, s ∈ S, t ∈ T], 
                                           vDISCHA[e, s, t] >= - (vPCAP[e, s] + e.cap_existing_power_MW))
         @constraint(mod, cMaxDischa[e ∈ E, s ∈ S, t ∈ T], 
@@ -125,25 +126,25 @@ function stochastic_capex_model!(sys, mod:: Model, model_settings::Dict)
     E_fixduration_expandable = filter(e -> ((e.duration_hr > 0)  && (e.expand_capacity == true)), E)
 
     if !isempty(E_fixduration_expandable)
+        println(" - Energy-power ratio constraints for expandable storage with fixed duration")
     @constraint(mod, cFixEnergyPowerRatio[e ∈ E_fixduration_expandable, s ∈ S], 
                         (vECAP[e, s] + e.cap_existing_energy_MWh) ==  e.duration_hr * (vPCAP[e, s] + e.cap_existing_power_MW) )
     end
 
+    println(" - Maximum state of charge constraints")
     @constraint(mod, cMaxSOC[e ∈ E, s ∈ S, t ∈ T], 
                         vSOC[e, s, t] ≤ (vECAP[e, s] + e.cap_existing_energy_MWh))
 
     # SOC in the next time is a function of SOC in the previous time
     # with circular wrapping for the first and last timepoints within a timeseries
-    if model_settings["consider_single_storage_injection"] == true
+    println(" - State of charge constraints")
+    if model_settings["single_storage_injection"] == true
         @constraint(mod, cStateOfCharge_SingleInjection[e ∈ E, s ∈ S, t ∈ T],
                         vSOC[e, s, t] == vSOC[e, s, T[t.prev_timepoint_id]] -
                                         t.duration_hr*(vDISCHA[e, s, t]) )
         # Power generation by bus
         @expression(mod, eNetDischargeAtBus[n ∈ N, s ∈ S, t ∈ T], 
                     sum(vDISCHA[e, s, t] for e ∈ E_AT_BUS[n.id]) )
-
-        # Storage cost per timepoint
-        @expression(mod, eStorCostPerTp[t ∈ T], 0.0)  # No variable cost in single injection model
 
     else
         @constraint(mod, cStateOfCharge[e ∈ E, s ∈ S, t ∈ T],
@@ -154,18 +155,22 @@ function stochastic_capex_model!(sys, mod:: Model, model_settings::Dict)
         @expression(mod, eNetDischargeAtBus[n ∈ N, s ∈ S, t ∈ T], 
                     - sum(vCHARGE[e, s, t] for e ∈ E_AT_BUS[n.id]) 
                     + sum(vDISCHA[e, s, t] for e ∈ E_AT_BUS[n.id]) )
-
-        # Storage cost per timepoint
-        @expression(mod, eStorCostPerTp[t ∈ T],
-                     1/length(S)*(sum(s.probability * e.cost_variable_USDperMWh * (vCHARGE[e, s, t] + vDISCHA[e, s, t]) for e ∈ E, s ∈ S) ) )
-    
     end
     
+    println(" - Storage cost per timepoint expressions")
+    if model_settings["single_storage_injection"] == true
+        @expression(mod, eStorCostPerTp[t ∈ T], 0.0)  # No variable cost in single injection model
+    else
+        @expression(mod, eStorCostPerTp[t ∈ T],
+                     1/length(S)*(sum(s.probability * e.cost_variable_USDperMWh * (vCHARGE[e, s, t] + vDISCHA[e, s, t]) for e ∈ E, s ∈ S) ) )
+    end
+
     eCostPerTp =  @views mod[:eCostPerTp]
     unregister(mod, :eCostPerTp)
     @expression(mod, eCostPerTp[t ∈ T], eCostPerTp[t] + eStorCostPerTp[t])
                  
     # Storage cost per period
+    println(" - Storage cost per period expression")
 	@expression(mod, eStorCostPerPeriod,
                     1/length(S)*sum( s.probability * (e.cost_fixed_power_USDperkW * vPCAP[e, s] * 1000 
                                                 + e.cost_fixed_energy_USDperkWh * vECAP[e, s] * 1000) for e ∈ E, s ∈ S ))
@@ -198,10 +203,10 @@ function toCSV_stochastic_capex(sys, mod:: Model, outputs_dir:: String)
     println("   - storage_dispatch.csv printed.")
     
     # Print vGENV variable solution
-    df1 = to_df(mod[:vPCAP], [:storage, :scenario, :power_capacity_MW]; struct_fields = [:name, :name])
+    df1 = to_df(mod[:vPCAP], [:storage, :scenario, :built_power_capacity_MW]; struct_fields = [:name, :name])
 
     # Print vCAPV variable solution
-    df2 = to_df(mod[:vECAP], [:storage, :scenario, :energy_capacity_MWh]; struct_fields = [:name, :name])
+    df2 = to_df(mod[:vECAP], [:storage, :scenario, :built_energy_capacity_MWh]; struct_fields = [:name, :name])
 
     df_mix1 = outerjoin(df1, df2, on=[:storage, :scenario])
     CSV.write(joinpath(outputs_dir, "storage_capacity.csv"), df_mix1)

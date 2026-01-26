@@ -221,12 +221,13 @@ function run_stocapex(; main_dir = pwd(),
     
     if isnothing(model_settings)
         model_settings = Dict(
-                "gen_costs" => "quadratic",
-                "consider_shedding" => false,
-                "consider_single_storage_injection" => false,
-                "consider_line_capacity" => true,
-                "consider_bus_max_flow" => false,
-                "consider_angle_limits" => true,
+                "generator_type_costs" => "linear",
+                "load_shedding" => false,
+                "single_storage_injection" => false,
+                "line_capacity_expansion" => true,
+                "line_capacity" => true,
+                "bus_max_flow" => false,
+                "angle_difference_limits" => true,
                 "policies" => []
         )
     end
